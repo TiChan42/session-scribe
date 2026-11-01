@@ -5,4 +5,5 @@ COPY requirements/stt.txt /app/requirements.txt
 RUN python -m pip install --no-cache-dir --require-hashes -r /app/requirements.txt
 COPY src/sessionscribe/ /app/src/sessionscribe/
 USER 65532:65532
-ENTRYPOINT ["python", "-m", "sessionscribe.cli", "stt-worker"]
+ENTRYPOINT ["python", "-m", "sessionscribe.cli"]
+CMD ["stt-worker"]

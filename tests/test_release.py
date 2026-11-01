@@ -16,14 +16,25 @@ release = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(release)
 
 
-def archive(path, *, user="65532:65532", revision="a" * 40, env=None, extra=None, corrupt=False):
+def archive(
+    path,
+    *,
+    user="65532:65532",
+    revision="a" * 40,
+    env=None,
+    extra=None,
+    corrupt=False,
+    stage="recorder",
+):
     config = {
         "os": "linux",
         "architecture": "amd64",
         "config": {
             "User": user,
             "Entrypoint": ["python", "-m", "sessionscribe.cli"],
-            "Cmd": ["bot", "--policy", "/config/bot.json"],
+            "Cmd": ["bot", "--policy", "/config/bot.json"]
+            if stage == "recorder"
+            else ["stt-worker" if stage == "stt" else "evaluate-worker"],
             "Labels": {"org.opencontainers.image.revision": revision},
             "Env": env or ["PATH=/usr/bin"],
         },
@@ -57,11 +68,12 @@ def archive(path, *, user="65532:65532", revision="a" * 40, env=None, extra=None
             output.addfile(member, io.BytesIO(raw))
 
 
-def test_release_binds_archive_to_source_and_full_immutable_reference(tmp_path):
-    file = tmp_path / "recorder.oci.tar"
-    archive(file)
-    result = release.inspect(file, "example/project", "a" * 40, "recorder")
-    assert result["image"].startswith("ghcr.io/example/project-recorder@sha256:")
+@pytest.mark.parametrize("stage", ["recorder", "stt", "evaluator"])
+def test_release_binds_archive_to_source_and_full_immutable_reference(tmp_path, stage):
+    file = tmp_path / (stage + ".oci.tar")
+    archive(file, stage=stage)
+    result = release.inspect(file, "example/project", "a" * 40, stage)
+    assert result["image"].startswith(f"ghcr.io/example/project-{stage}@sha256:")
     assert result["revision"] == "a" * 40
     assert result["sha256"] == hashlib.sha256(file.read_bytes()).hexdigest()
 
