@@ -146,19 +146,15 @@ class DiskCapture(threading.Thread):
                 store.close()
 
 
-async def authorize_udp(state, data):
-    hostname = urlsplit("//" + state.endpoint).hostname
+async def authorize_transport(payload, expiry):
     reader, writer = await asyncio.open_unix_connection("/voice-gate/udp.sock", limit=2048)
     try:
-        writer.write(
-            json.dumps({"hostname": hostname, "ip": data["ip"], "port": data["port"]}).encode()
-            + b"\n"
-        )
+        writer.write(json.dumps(payload).encode() + b"\n")
         await writer.drain()
         async with asyncio.timeout(10):
             reply = json.loads(await reader.readline())
-        if reply != {"authorized": True, "expires_in": 90}:
-            raise PermissionError("negotiated Discord UDP target denied")
+        if reply != {"authorized": True, "expires_in": expiry}:
+            raise PermissionError("negotiated Discord transport target denied")
     finally:
         writer.close()
         await writer.wait_closed()
@@ -178,12 +174,30 @@ async def test(policy):
     if not time.time() < policy.expires_at <= time.time() + 600:
         raise PermissionError("fresh explicit participant authorization required")
     original = VoiceWebSocket.ready
+    original_factory = VoiceWebSocket.from_state
+    original_factory_descriptor = VoiceWebSocket.__dict__["from_state"]
+
+    async def approved_factory(_cls, state, **kwargs):
+        endpoint = urlsplit("//" + state.endpoint)
+        await authorize_transport(
+            {"transport": "wss", "hostname": endpoint.hostname, "port": endpoint.port or 443},
+            180,
+        )
+        return await original_factory(state, **kwargs)
 
     async def approved_ready(ws, data):
-        await authorize_udp(ws.state, data)
+        await authorize_transport(
+            {
+                "hostname": urlsplit("//" + ws.state.endpoint).hostname,
+                "ip": data["ip"],
+                "port": data["port"],
+            },
+            90,
+        )
         await original(ws, data)
 
     VoiceWebSocket.ready = approved_ready
+    VoiceWebSocket.from_state = classmethod(approved_factory)
     intents = discord.Intents.none()
     intents.guilds = True
     intents.voice_states = True
@@ -388,6 +402,7 @@ async def test(policy):
         if capture is not None and capture.is_alive():
             await asyncio.to_thread(capture.join, 20)
         VoiceWebSocket.ready = original
+        VoiceWebSocket.from_state = original_factory_descriptor
 
 
 def run(path):
