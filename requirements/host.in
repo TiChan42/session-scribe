@@ -1,0 +1,4 @@
+# Trusted host core verification; production core uses core.txt without pytest.
+# Audio and inference workers remain Python 3.12 containers.
+-r core.in
+pytest==9.0.2

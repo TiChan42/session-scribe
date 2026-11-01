@@ -1,0 +1,102 @@
+"""Slash command definitions/router, shared by the Discord transport and tests.
+
+No gateway connection or command registration is performed by importing this module.
+Transport must derive Actor and current voice membership from Discord events, never
+from user-supplied display names, command options or model responses.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+from .control import Controller
+from .models import Actor
+
+if TYPE_CHECKING:
+    from .capture import RecordingPool
+
+COMMANDS = (
+    "start",
+    "consent",
+    "revoke",
+    "pause",
+    "resume",
+    "stop",
+    "status",
+    "queue",
+    "process",
+    "result",
+    "delete",
+)
+
+
+def definitions() -> list[dict]:
+    commands = [
+        {"name": name, "description": f"SessionScribe: {name}", "type": 1, "dm_permission": False}
+        for name in COMMANDS
+    ]
+    for command in commands:
+        name = command["name"]
+        if name == "start":
+            command["options"] = [
+                {
+                    "name": "voice_channel",
+                    "description": "Freigegebener Sprachkanal",
+                    "type": 7,
+                    "channel_types": [2],
+                    "required": True,
+                }
+            ]
+        elif name not in ("queue", "status"):
+            command["options"] = [
+                {
+                    "name": "session_id",
+                    "description": "Sitzungs-ID aus /status",
+                    "type": 3,
+                    "required": True,
+                    "min_length": 32,
+                    "max_length": 32,
+                }
+            ]
+            if name == "consent":
+                command["options"].append(
+                    {
+                        "name": "cloud_consent",
+                        "description": "Textauswertung über Ollama Cloud ausdrücklich erlauben",
+                        "type": 5,
+                        "required": True,
+                    }
+                )
+    return commands
+
+
+class CommandRouter:
+    def __init__(self, controller: Controller, recordings: RecordingPool | None = None):
+        self.control, self.recordings = controller, recordings
+
+    def dispatch(
+        self,
+        name: str,
+        actor: Actor,
+        *,
+        session_id: str | None = None,
+        voice_channel_id: str | None = None,
+        participants: frozenset[str] = frozenset(),
+        cloud_consent: bool = False,
+    ):
+        if name not in COMMANDS:
+            raise ValueError("unknown command")
+        if name == "start":
+            if self.recordings is not None:
+                return self.recordings.start(self.control, actor, voice_channel_id, participants)
+            return self.control.start(actor, voice_channel_id, participants)
+        if name == "queue":
+            return self.control.queue(actor)
+        if name == "status":
+            return self.control.status_for(actor)
+        if session_id is None:
+            raise ValueError("session ID required")
+        if name == "consent":
+            return self.control.consent(actor, session_id, cloud=cloud_consent)
+        method = getattr(self.control, name)
+        return method(actor, session_id)

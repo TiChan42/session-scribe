@@ -1,0 +1,16 @@
+# Synthetic operator-only metadata. Never put token values here.
+# Guild admins cannot add credentials through slash commands.
+max_sessions = 4
+max_reserved_tracks = 32
+max_reserved_audio_bytes = 4294967296
+min_free_bytes = 536870912
+
+[[bots]]
+id = "5001"
+guild_ids = ["1000", "2000"]
+token_file = "/run/secrets/recorder-a-token"
+
+[[bots]]
+id = "5002"
+guild_ids = ["1000", "2000"]
+token_file = "/run/secrets/recorder-b-token"

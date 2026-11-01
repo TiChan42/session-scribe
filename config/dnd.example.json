@@ -1,0 +1,109 @@
+{
+  "guild_id": "2000",
+  "command_channel_ids": [
+    "2002"
+  ],
+  "voice_channel_ids": [
+    "2003"
+  ],
+  "output_channel_id": "2004",
+  "grants": {
+    "start": {
+      "users": [
+        "2001"
+      ],
+      "roles": [
+        "2010"
+      ]
+    },
+    "pause": {
+      "users": [
+        "2001"
+      ],
+      "roles": [
+        "2010"
+      ]
+    },
+    "resume": {
+      "users": [
+        "2001"
+      ],
+      "roles": [
+        "2010"
+      ]
+    },
+    "stop": {
+      "users": [
+        "2001"
+      ],
+      "roles": [
+        "2010"
+      ]
+    },
+    "status": {
+      "users": [
+        "2001"
+      ],
+      "roles": [
+        "2010"
+      ]
+    },
+    "process": {
+      "users": [
+        "2001"
+      ],
+      "roles": [
+        "2010"
+      ]
+    },
+    "result": {
+      "users": [
+        "2001"
+      ],
+      "roles": [
+        "2010"
+      ]
+    },
+    "delete": {
+      "users": [
+        "2001"
+      ],
+      "roles": [
+        "2010"
+      ]
+    }
+  },
+  "recording_enabled": false,
+  "cloud_enabled": false,
+  "daily_cloud_calls": 4,
+  "daily_cloud_tokens": 100000,
+  "inference": {
+    "model": "OPERATOR_APPROVED_CLOUD_MODEL",
+    "context_tokens": 32768,
+    "output_tokens": 2048,
+    "prompt_version": "v1",
+    "split_mode": "reject"
+  },
+  "limits": {
+    "max_participants": 8,
+    "max_duration_ms": 14400000,
+    "segment_ms": 15000,
+    "max_audio_bytes": 1073741824,
+    "min_free_bytes": 536870912,
+    "max_chunks": 10000
+  },
+  "characters": {
+    "2001": [
+      "Synthetic Character",
+      "Synthetic NPC"
+    ]
+  },
+  "campaign": "Synthetic Campaign",
+  "mode": "dnd",
+  "default_protocol_channel_id": "2004",
+  "voice_protocol_channels": {},
+  "recorder_bot_ids": [
+    "5001",
+    "5002"
+  ]
+}
