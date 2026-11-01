@@ -260,9 +260,14 @@ async def test(policy):
         if not membership_ok():
             raise PermissionError("only the consenting participant may attend")
         phase = "voice_connect"
-        voice = await channel.connect(
-            cls=VoiceClient, timeout=30, reconnect=False, self_deaf=False, self_mute=True
-        )
+
+        class MutedVoiceClient(VoiceClient):
+            async def connect(self, *, reconnect, timeout):
+                await super().connect(
+                    reconnect=reconnect, timeout=timeout, self_deaf=False, self_mute=True
+                )
+
+        voice = await channel.connect(cls=MutedVoiceClient, timeout=30, reconnect=False)
         state = voice._connection
         phase = "dave_readiness"
         if (
