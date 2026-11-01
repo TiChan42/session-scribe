@@ -1,6 +1,6 @@
 # Prüfung und offene Nachweise
 
-Aktuell bestehen 171 fokussierte Anwendungstests, einschließlich Discord-Steuerungsclient,
+Aktuell bestehen 173 fokussierte Anwendungstests, einschließlich Discord-Steuerungsclient,
 Broker-, Ergebnisbeleg- und Migrationstests. Dazu kommen vier separat ausgeführte
 Host-Core-Tests, 46 synthetische Native-/Integrationstests und vier Registry-Tests
 im separaten Infrastrukturprojekt. Ansible-Syntax/Lint sowie unverändertes lokales
