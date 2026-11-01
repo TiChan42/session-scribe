@@ -175,6 +175,12 @@ verifizierte öffentliche UDP-Ziel zeitlich befristet freigeben; IPv4 und IPv6
 bleiben ansonsten gesperrt. Der Container erhält weder Engine- noch Adminzugriff.
 Ein erfolgreicher Einzeltest ersetzt keinen Langzeit-/Mehrsprechernachweis.
 
+Der Voice-WebSocket verwendet den von Discord ausgehandelten TLS-Port; er ist
+nicht auf 443 festgelegt. Die Einzelprobe fordert vor dem Verbindungsaufbau eine
+separate, befristete Freigabe ausschließlich für die unabhängig aufgelösten
+öffentlichen Adressen dieses `discord.media`-Hosts und genau diesen Port an.
+TLS-Zertifikatsprüfung bleibt aktiv. UDP erhält danach seine eigene Freigabe.
+
 Synthetische Tests prüfen reale Pycord-Commandschemas inklusive Unterbefehltypen,
 authentische Interaktionsidentität, Manage-Guild-Prüfung, Guild-Kapazität/Allowlist,
 dauerhaftes Setup, fremde/partielle Kanäle, Anhänge-/Mention-Rechte, No-Follow-
