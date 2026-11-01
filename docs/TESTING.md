@@ -180,6 +180,10 @@ nicht auf 443 festgelegt. Die Einzelprobe fordert vor dem Verbindungsaufbau eine
 separate, befristete Freigabe ausschließlich für die unabhängig aufgelösten
 öffentlichen Adressen dieses `discord.media`-Hosts und genau diesen Port an.
 TLS-Zertifikatsprüfung bleibt aktiv. UDP erhält danach seine eigene Freigabe.
+Die UDP-Adresse aus der authentifizierten Ready-Nachricht kann vom WebSocket-DNS
+abweichen. Sie benötigt deshalb ein vom Gateway für genau diesen Voice-Host
+ausgestelltes, kurzlebiges Einmalticket. Es erlaubt ein einziges öffentliches
+Adress-/Portpaar; private/übersetzte Adressen und Wiederverwendung werden verweigert.
 
 Synthetische Tests prüfen reale Pycord-Commandschemas inklusive Unterbefehltypen,
 authentische Interaktionsidentität, Manage-Guild-Prüfung, Guild-Kapazität/Allowlist,
