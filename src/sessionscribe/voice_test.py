@@ -33,6 +33,7 @@ class TestPolicy(StrictModel):
     cloud_consent: bool
     duration_seconds: int = Field(default=60, ge=15, le=60)
     inference: InferenceSettings
+    revision: str = Field(default="development", pattern=r"^(development|[a-f0-9]{40})$")
 
 
 class DiskCapture(threading.Thread):
@@ -399,6 +400,7 @@ async def test(policy):
         if capture.is_alive() or capture.receipt is None:
             raise RuntimeError("test finalization failed")
         print(json.dumps(capture.receipt))
+        return capture.receipt
     except Exception as error:
         from .files import SafeFiles
 
@@ -433,3 +435,148 @@ def run(path):
         asyncio.run(test(policy))
     except Exception:
         raise SystemExit("Authorized voice test failed; inspect private phase evidence") from None
+
+
+def manual_actor(policy, ctx):
+    from .bot import authenticated_actor
+    from .control import Denied
+
+    actor = authenticated_actor(ctx)
+    actor.authorize_setup()
+    if (
+        actor.guild_id != policy.guild_id
+        or actor.user_id != policy.participant_id
+        or actor.channel_id != policy.protocol_channel_id
+    ):
+        raise Denied("operator test scope does not match the authenticated interaction")
+    return actor
+
+
+async def listen(policy):
+    import discord
+
+    from .control import Denied
+    from .files import SafeFiles
+
+    if policy.expires_at != 0:
+        raise ValueError("manual listener needs a static non-recording policy")
+    intents = discord.Intents.none()
+    intents.guilds = True
+    client = discord.Bot(
+        intents=intents, auto_sync_commands=False, allowed_mentions=discord.AllowedMentions.none()
+    )
+    files = SafeFiles(Path("/data/voice-tests"))
+    active = asyncio.Lock()
+    ready = False
+
+    def health():
+        files.json(
+            "listener-health.json",
+            {
+                "schema": 1,
+                "revision": policy.revision,
+                "checked_at": time.time(),
+                "command_ready": ready,
+                "test_active": active.locked(),
+            },
+        )
+
+    @client.slash_command(
+        name="testaufnahme",
+        description="60 Sekunden Einzeltest: Aufnahme und bestätigte Cloud-Textauswertung",
+        guild_ids=[int(policy.guild_id)],
+        default_member_permissions=discord.Permissions(manage_guild=True),
+    )
+    async def command(ctx):
+        await ctx.defer(ephemeral=True)
+        try:
+            manual_actor(policy, ctx)
+            if active.locked():
+                await ctx.respond("Eine Testaufnahme läuft bereits.", ephemeral=True)
+                return
+            async with active:
+                health()
+                await ctx.respond(
+                    "Einzeltest wird gestartet. Bleibe allein im freigegebenen Sprachkanal "
+                    "und lies erst nach der sichtbaren Startmeldung vor.",
+                    ephemeral=True,
+                )
+                runtime = policy.model_copy(update={"expires_at": int(time.time()) + 600})
+                receipt = await test(runtime)
+                await ctx.respond(
+                    "Test beendet. Audio wurde lokal gespeichert und zur Verarbeitung eingereiht."
+                    if receipt["dave_single_speaker_receive"]
+                    else "Test beendet; noch kein verwertbarer DAVE-Audioempfang bestätigt.",
+                    ephemeral=True,
+                )
+        except Denied:
+            await ctx.respond(
+                "Dieser Einzeltest ist nur für den freigegebenen Betreiber "
+                "im Test-Protokollkanal erlaubt.",
+                ephemeral=True,
+            )
+        except Exception:
+            await ctx.respond(
+                "Test konnte nicht abgeschlossen werden. Vorhandene Daten bleiben erhalten; "
+                "Details bleiben privat.",
+                ephemeral=True,
+            )
+        finally:
+            health()
+
+    @client.event
+    async def on_ready():
+        nonlocal ready
+        try:
+            async with asyncio.timeout(30):
+                value = await client.http.upsert_guild_command(
+                    client.application_id, int(policy.guild_id), command.to_dict()
+                )
+                command.id = value["id"]
+                client._application_commands[command.id] = command
+                commands = await client.http.get_guild_commands(
+                    client.application_id, int(policy.guild_id)
+                )
+                ready = any(c["id"] == command.id and c["name"] == "testaufnahme" for c in commands)
+        except Exception:
+            ready = False
+        health()
+
+    @client.event
+    async def on_disconnect():
+        nonlocal ready
+        ready = False
+        health()
+
+    @client.event
+    async def on_error(_event, *_args, **_kwargs):
+        logging.getLogger(__name__).error("Manual test event failed; details suppressed")
+
+    async def heartbeat():
+        while True:
+            health()
+            await asyncio.sleep(15)
+
+    heartbeat_task = asyncio.create_task(heartbeat())
+    try:
+        await client.start(discord_token(Path("/run/secrets/bot.env")).get_secret_value())
+    finally:
+        ready = False
+        health()
+        heartbeat_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await heartbeat_task
+        await client.close()
+
+
+def run_listener(path):
+    for name in ("discord", "aiohttp"):
+        logger = logging.getLogger(name)
+        logger.handlers = [logging.NullHandler()]
+        logger.propagate = False
+    try:
+        asyncio.run(listen(TestPolicy.model_validate_json(path.read_bytes())))
+    except Exception:
+        raise SystemExit(
+            "Manual test listener unavailable; no automatic recording started"
+        ) from None

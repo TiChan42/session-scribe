@@ -147,3 +147,10 @@ richtige Guild, einen tatsächlichen Textkanal und Ansichts-/Schreib-/Anhangrech
 Dateiname und Größe bleiben begrenzt. Diese Prüfungen sind mit synthetischen
 Discord-Objekten getestet. Die Outbox ist an den Hintergrundtakt des Steuerungsclients angebunden. Echte
 Kanalzustellungen bleiben bis zur autorisierten Testguild ungeprüft.
+## Manueller Einzeltest
+
+Der zusätzliche CLI-Modus `voice-test-listener` lädt eine private TestPolicy mit
+`expires_at: 0`, freigegebener Guild/Person sowie festen Sprach-/Protokollkanälen.
+Dieses Kennzeichen erlaubt nur das Warten auf `/testaufnahme`; erst ein geprüftes
+Guild-Interaktionsereignis erzeugt die kurzlebige Aufnahmepolicy. Die Aufnahme ist
+auf 60 Sekunden und eine Person begrenzt. Der reguläre `/start`-Gate bleibt bestehen.

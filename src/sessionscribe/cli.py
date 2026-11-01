@@ -17,6 +17,10 @@ def main():
     bot.add_argument("--policy", type=Path, required=True)
     voice_test = commands.add_parser("voice-test", help="operator-only short DAVE qualification")
     voice_test.add_argument("--policy", type=Path, required=True)
+    manual_test = commands.add_parser(
+        "voice-test-listener", help="wait for an authenticated manual test command"
+    )
+    manual_test.add_argument("--policy", type=Path, required=True)
     health = commands.add_parser("control-health", help="fresh control readiness for one revision")
     health.add_argument("--root", type=Path, required=True)
     health.add_argument("--revision", required=True)
@@ -41,6 +45,10 @@ def main():
         from .voice_test import run
 
         run(args.policy)
+    elif args.command == "voice-test-listener":
+        from .voice_test import run_listener
+
+        run_listener(args.policy)
     elif args.command == "demo":
         from .demo import demo
 
