@@ -201,6 +201,18 @@ Readiness verlangt erfolgreiche Registrierung, frische Zeit und richtige Revisio
 Fehlermeldungen enthalten keine Exception-Inhalte. Abbruch schließt Client/SQLite
 und setzt Bereitschaft zurück. Die Tests senden keine Netzwerkrequests.
 
+Der Empfangstest füttert den echten Sink-Einstieg mit synthetischen dekodierten
+Paketen: vor Sitzungsbeginn, weit vor der Ankunftszeit, nach RTP-Wrap und nach einer
+Zeitlücke. Gültige Nachfolgepakete werden weiterhin als FLAC abgeschlossen und
+dauerhaft eingereiht; verworfene Pakete erscheinen als Zähler in der Testquittung.
+Keine Uhr wird aus einem Ausreißer neu verankert. Separate Negativfälle prüfen
+Teilnehmerwechsel, fremde SSRC/Nutzer, fehlende Entschlüsselung und fehlerhafte
+PCM-/RTP-Daten. Diese Tests verwenden keine echte Stimme und ersetzen keinen
+erneuten autorisierten Discord-Test.
+
+RTP-Zeitstempel repräsentieren die Abtastzeit, keine Empfangsgarantie; ihre
+Reihenfolge und Paketankunft können abweichen ([RFC 3550](https://www.rfc-editor.org/rfc/rfc3550.html)).
+
 Zusätzliche manuelle Probe: Der Steuerungsclient hat am 2026-11-01 eine echte
 Discord-Gateway-Verbindung hergestellt, alle 13 globalen Commands registriert
 und über die API rückgeprüft. Frische Control-Bereitschaft und sauberer Abbruch

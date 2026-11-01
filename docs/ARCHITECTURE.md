@@ -34,6 +34,11 @@ Sitzungszeit in Millisekunden. Ein Frame umfasst 3840 Bytes. RTP-Uhren werden
 je Verbindung an dieselbe monotone Sitzungsuhr gebunden; Wrap-around und Rejoin
 sind getestet. Die Erstankunft enthält Netzwerk-/Jitterunsicherheit. Der Adapter
 muss Empfang, Entschlüsselung, SSRC-Zuordnung, Abmeldung und Watchdog liefern.
+Die Einzeltest-Empfangsschicht verwirft und zählt Pakete vor Sitzungsbeginn oder
+mehr als eine Sekunde vor ihrer Ankunftszeit, statt die gesamte Aufnahme zu beenden.
+Sie behält den bisherigen Zeitanker; gültiges Audio und Zeitlücken bleiben erhalten.
+Fehlerhafte Datentypen, unbestätigte Quellen und verlorene Verschlüsselung stoppen
+weiterhin. Die RTP-Zuordnung hält höchstens 64 Verbindungsanker.
 
 Der Recorder schreibt synchron auf Platte, maximal eine geöffnete Datei je
 Teilnehmer und Sitzung. Die Transportintegration muss eine begrenzte Übergabe verwenden und
