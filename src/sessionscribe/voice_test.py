@@ -7,6 +7,7 @@ import contextlib
 import json
 import logging
 import queue
+import re
 import threading
 import time
 import uuid
@@ -153,8 +154,23 @@ async def authorize_transport(payload, expiry):
         await writer.drain()
         async with asyncio.timeout(10):
             reply = json.loads(await reader.readline())
-        if reply != {"authorized": True, "expires_in": expiry}:
+        expected = (
+            {"authorized", "expires_in", "udp_ticket"}
+            if payload.get("transport") == "wss"
+            else {"authorized", "expires_in"}
+        )
+        if (
+            set(reply) != expected
+            or reply.get("authorized") is not True
+            or reply.get("expires_in") != expiry
+        ):
             raise PermissionError("negotiated Discord transport target denied")
+        if "udp_ticket" in expected and (
+            not isinstance(reply["udp_ticket"], str)
+            or not re.fullmatch(r"[a-f0-9]{64}", reply["udp_ticket"])
+        ):
+            raise PermissionError("bounded voice connection ticket required")
+        return reply.get("udp_ticket")
     finally:
         writer.close()
         await writer.wait_closed()
@@ -176,10 +192,11 @@ async def test(policy):
     original = VoiceWebSocket.ready
     original_factory = VoiceWebSocket.from_state
     original_factory_descriptor = VoiceWebSocket.__dict__["from_state"]
+    tickets = {}
 
     async def approved_factory(_cls, state, **kwargs):
         endpoint = urlsplit("//" + state.endpoint)
-        await authorize_transport(
+        tickets[id(state)] = await authorize_transport(
             {"transport": "wss", "hostname": endpoint.hostname, "port": endpoint.port or 443},
             180,
         )
@@ -191,6 +208,7 @@ async def test(policy):
                 "hostname": urlsplit("//" + ws.state.endpoint).hostname,
                 "ip": data["ip"],
                 "port": data["port"],
+                "ticket": tickets.get(id(ws.state)),
             },
             90,
         )
