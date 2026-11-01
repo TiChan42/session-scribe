@@ -19,7 +19,7 @@ from pydantic import Field
 
 from .credentials import discord_token
 from .models import Actor, Config, Grant, InferenceSettings, Limits, Snowflake, StrictModel
-from .voice import RtpTimeline
+from .voice import RtpTimeline, RtpTimingDrop
 
 
 class TestPolicy(StrictModel):
@@ -47,6 +47,7 @@ class DiskCapture(threading.Thread):
         self.receipt = None
         self.started_at = None
         self.frame_count = self.nonzero_frames = 0
+        self.timing_drops = {"before_session": 0, "ahead_of_arrival": 0}
 
     def accept(self, frame):
         if self.stop_requested.is_set() or not self.ready.is_set():
@@ -133,6 +134,7 @@ class DiskCapture(threading.Thread):
                 "nonzero_frames": self.nonzero_frames,
                 "audio_chunks": holder["recorder"].chunk_count,
                 "failure": self.failure,
+                "timing_drops": dict(self.timing_drops),
                 "dave_single_speaker_receive": self.nonzero_frames > 0 and not self.failure,
                 "production_voice_qualified": False,
             }
@@ -146,6 +148,66 @@ class DiskCapture(threading.Thread):
                     holder["recorder"].close()
             if store:
                 store.close()
+
+
+def qualification_sink(state, capture, membership_ok):
+    """Bound the pinned SDK's decoded packets before handing frames to disk."""
+    import discord
+
+    from .recorder import FRAME_BYTES, Frame
+
+    timeline = RtpTimeline()
+
+    class Sink(discord.sinks.Sink):
+        def write(self, data, user):
+            if capture.stop_requested.is_set():
+                return
+            uid = state.ssrc_user_map.get(data.packet.ssrc)
+            if (
+                str(uid) != capture.policy.participant_id
+                or user is not None
+                and user.id != uid
+                or not membership_ok()
+            ):
+                capture.abort("unapproved_voice_source")
+                return
+            if not state.dave_session.ready or not data.packet.decrypted_data:
+                capture.abort("dave_not_ready")
+                return
+            pcm = data.pcm
+            if not pcm or len(pcm) % FRAME_BYTES or len(pcm) > FRAME_BYTES * 6:
+                capture.abort("unexpected_audio_frame")
+                return
+            try:
+                stamp = timeline.timestamp(
+                    str(data.packet.ssrc),
+                    data.packet.timestamp,
+                    int((time.monotonic() - capture.started_at) * 1000),
+                )
+            except RtpTimingDrop as error:
+                # A late or implausibly early packet is loss, not a fatal stream
+                # error. Keep the original anchor: never compress a time gap or
+                # invent a new clock from the rejected packet.
+                capture.timing_drops[error.reason] += 1
+                return
+            except (TypeError, ValueError):
+                capture.abort("invalid_audio_timeline")
+                return
+            for index in range(len(pcm) // FRAME_BYTES):
+                capture.accept(
+                    Frame(
+                        capture.policy.participant_id,
+                        stamp + 20 * index,
+                        pcm[index * FRAME_BYTES : (index + 1) * FRAME_BYTES],
+                    )
+                )
+
+        def cleanup(self):
+            if not capture.stop_requested.is_set():
+                capture.abort("receiver_stopped_unexpectedly")
+            capture.stop_requested.set()
+
+    return Sink()
 
 
 async def authorize_transport(payload, expiry):
@@ -226,6 +288,24 @@ async def test(policy):
     phase = "login"
     loop = asyncio.get_running_loop()
     channel = None
+    attempt, started = uuid.uuid4().hex, time.time()
+
+    def progress(value, error=None):
+        from .files import SafeFiles
+
+        nonlocal phase
+        phase = value
+        SafeFiles(Path("/data/voice-tests")).json(
+            "test-phase.json",
+            {
+                "schema": 1,
+                "attempt": attempt,
+                "started_at": started,
+                "checked_at": time.time(),
+                "phase": phase,
+                "error_type": type(error).__name__ if error is not None else None,
+            },
+        )
 
     def membership_ok():
         return channel is not None and set(channel.voice_states) - {client.user.id} == {
@@ -271,11 +351,12 @@ async def test(policy):
             await interaction.response.send_message("Testaufnahme beendet.", ephemeral=True)
 
     try:
+        progress("login")
         token = discord_token(Path("/run/secrets/bot.env"))
         login = asyncio.create_task(client.start(token.get_secret_value()))
         async with asyncio.timeout(60):
             await client.wait_until_ready()
-        phase = "guild_access"
+        progress("guild_access")
         guild = client.get_guild(int(policy.guild_id))
         if guild is None:
             raise PermissionError("approved test guild unavailable")
@@ -285,14 +366,14 @@ async def test(policy):
             output, discord.TextChannel
         ):
             raise PermissionError("approved same-guild channels required")
-        phase = "waiting_participant"
+        progress("waiting_participant")
         for _ in range(120):
             if membership_ok():
                 break
             await asyncio.sleep(1)
         if not membership_ok():
             raise PermissionError("only the consenting participant may attend")
-        phase = "voice_connect"
+        progress("voice_connect")
 
         class MutedVoiceClient(VoiceClient):
             async def connect(self, *, reconnect, timeout):
@@ -302,7 +383,7 @@ async def test(policy):
 
         voice = await channel.connect(cls=MutedVoiceClient, timeout=30, reconnect=False)
         state = voice._connection
-        phase = "dave_readiness"
+        progress("dave_readiness")
         # The SDK marks voice connected after transport keys arrive. MLS/DAVE
         # commits arrive later on its ongoing websocket poll task.
         async with asyncio.timeout(15):
@@ -330,67 +411,21 @@ async def test(policy):
                 text = "Einzeltest vorbereitet; ausdrückliche Aufnahmezustimmung bestätigt."
                 kwargs = {}
             else:
-                text = "Testaufnahme beendet. Die Verarbeitung erfolgt anschließend."
+                text = "Testaufnahme beendet. Vorhandenes Audio bleibt lokal gespeichert."
                 kwargs = {}
             future = asyncio.run_coroutine_threadsafe(
                 output.send(text, allowed_mentions=discord.AllowedMentions.none(), **kwargs), loop
             )
             return str(future.result(timeout=15).id)
 
-        phase = "capture_start"
+        progress("capture_start")
         capture = DiskCapture(policy, visible)
         capture.start()
         await asyncio.to_thread(capture.ready.wait, 20)
         if capture.failure or not capture.ready.is_set() or not membership_ok():
             raise RuntimeError("test start refused")
-        timeline = RtpTimeline()
-
-        class Sink(discord.sinks.Sink):
-            def write(self, data, user):
-                from .recorder import FRAME_BYTES, Frame
-
-                if capture.stop_requested.is_set():
-                    return
-                uid = state.ssrc_user_map.get(data.packet.ssrc)
-                if (
-                    str(uid) != policy.participant_id
-                    or user is not None
-                    and user.id != uid
-                    or not membership_ok()
-                ):
-                    capture.abort("unapproved_voice_source")
-                    return
-                if not state.dave_session.ready or not data.packet.decrypted_data:
-                    capture.abort("dave_not_ready")
-                    return
-                pcm = data.pcm
-                if not pcm or len(pcm) % FRAME_BYTES or len(pcm) > FRAME_BYTES * 6:
-                    capture.abort("unexpected_audio_frame")
-                    return
-                try:
-                    stamp = timeline.timestamp(
-                        str(data.packet.ssrc),
-                        data.packet.timestamp,
-                        int((time.monotonic() - capture.started_at) * 1000),
-                    )
-                    for index in range(len(pcm) // FRAME_BYTES):
-                        capture.accept(
-                            Frame(
-                                policy.participant_id,
-                                stamp + 20 * index,
-                                pcm[index * FRAME_BYTES : (index + 1) * FRAME_BYTES],
-                            )
-                        )
-                except Exception:
-                    capture.abort("invalid_audio_timeline")
-
-            def cleanup(self):
-                if not capture.stop_requested.is_set():
-                    capture.abort("receiver_stopped_unexpectedly")
-                capture.stop_requested.set()
-
-        voice.start_recording(Sink())
-        phase = "receiving"
+        voice.start_recording(qualification_sink(state, capture, membership_ok))
+        progress("receiving")
         while not stop.is_set() and not capture.stop_requested.is_set():
             await asyncio.sleep(0.1)
         if voice.is_recording():
@@ -399,14 +434,11 @@ async def test(policy):
         await asyncio.to_thread(capture.join, 20)
         if capture.is_alive() or capture.receipt is None:
             raise RuntimeError("test finalization failed")
+        progress("completed" if not capture.failure else "stopped_with_error")
         print(json.dumps(capture.receipt))
         return capture.receipt
     except Exception as error:
-        from .files import SafeFiles
-
-        SafeFiles(Path("/data/voice-tests")).json(
-            "test-phase.json", {"phase": phase, "error_type": type(error).__name__}
-        )
+        progress(phase, error)
         raise
     finally:
         if capture is not None:
@@ -483,7 +515,7 @@ async def listen(policy):
 
     @client.slash_command(
         name="testaufnahme",
-        description="60 Sekunden Einzeltest: Aufnahme und bestätigte Cloud-Textauswertung",
+        description="60 Sekunden Einzeltest des verschlüsselten Audioempfangs",
         guild_ids=[int(policy.guild_id)],
         default_member_permissions=discord.Permissions(manage_guild=True),
     )
@@ -503,10 +535,20 @@ async def listen(policy):
                 )
                 runtime = policy.model_copy(update={"expires_at": int(time.time()) + 600})
                 receipt = await test(runtime)
+                if receipt["dave_single_speaker_receive"]:
+                    message = (
+                        "Test beendet. Audio wurde lokal gespeichert "
+                        "und zur Verarbeitung eingereiht."
+                    )
+                    if any(receipt.get("timing_drops", {}).values()):
+                        message += " Einzelne Pakete mit unplausiblen Zeiten wurden verworfen."
+                else:
+                    message = (
+                        "Test vorzeitig beendet oder kein verwertbarer DAVE-Audioempfang. "
+                        "Bereits empfangenes Audio bleibt lokal gespeichert."
+                    )
                 await ctx.respond(
-                    "Test beendet. Audio wurde lokal gespeichert und zur Verarbeitung eingereiht."
-                    if receipt["dave_single_speaker_receive"]
-                    else "Test beendet; noch kein verwertbarer DAVE-Audioempfang bestätigt.",
+                    message,
                     ephemeral=True,
                 )
         except Denied:

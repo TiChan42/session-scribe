@@ -12,7 +12,7 @@ from conftest import start
 from sessionscribe.models import SessionState
 from sessionscribe.recorder import FRAME_BYTES, Frame
 from sessionscribe.transcript import load_chunks
-from sessionscribe.voice import DiscordReceiver, ReceiveUnavailable, RtpTimeline
+from sessionscribe.voice import DiscordReceiver, ReceiveUnavailable, RtpTimeline, RtpTimingDrop
 
 
 def test_lossless_bounded_segments_preserve_overlap_silence_loss_rejoin(rig):
@@ -60,6 +60,21 @@ def test_rtp_wrap_and_new_connection_use_shared_clock():
     assert timeline.timestamp("rejoin", 42, 4000) == 4000
     with pytest.raises(ValueError):
         timeline.timestamp("one", 960 * 500, 100)
+
+
+def test_rejected_rtp_packets_do_not_change_the_anchor_and_connections_stay_bounded():
+    timeline = RtpTimeline()
+    assert timeline.timestamp("one", 48_000, 20) == 20
+    for timestamp, reason in ((0, "before_session"), (48_000 * 30, "ahead_of_arrival")):
+        with pytest.raises(RtpTimingDrop) as rejected:
+            timeline.timestamp("one", timestamp, 40)
+        assert rejected.value.reason == reason
+    assert timeline.timestamp("one", 48_960, 40) == 40
+    for index in range(63):
+        assert timeline.timestamp(str(index), 0, 60) == 60
+    with pytest.raises(ValueError, match="bounded"):
+        timeline.timestamp("overflow", 0, 60)
+    assert len(timeline.anchors) == 64
 
 
 @pytest.mark.parametrize("limit", ["disk", "quota", "duration"])

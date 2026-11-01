@@ -182,3 +182,11 @@ Verbindungen auf vier pro UTC-Tag und auf geprüfte, zeitlich befristete Ziele.
 Vor der Bereitschaftsmeldung die frische revisionsgebundene Listener-Healthdatei
 und die tatsächliche Guild-Command-Registrierung prüfen. Readiness startet keinen
 Test. `deploy: false` stoppt Listener und Gateway mit Datenerhalt.
+
+Die private `test-phase.json` wird pro ausdrücklich gestartetem Versuch mit neuer
+Versuchskennung, Start-/Prüfzeit und aktueller Phase erneuert. Ein alter Fehler
+belegt keinen späteren Abbruch. Die jeweilige `test-receipt.json` nennt Empfang,
+Abbruchgrund und gezählte Zeitstempel-Ausreißer; ihr Produktionsfreigabefeld bleibt
+false. Zeitstempel-Ausreißer werden als verlorene Pakete behandelt, ohne gültige
+Nachfolgepakete zu verwerfen. Fehlende Sprecherfreigabe, Entschlüsselung oder
+Ressourcen bleiben Abbruchgründe. Keine Rohpakete oder Exception-Texte protokollieren.
