@@ -75,6 +75,12 @@ attestiert die Artefakte über den fest gepinnten offiziellen Provenance-Action.
 Nur dieser Main-Job erhält kurzlebige repo-begrenzte Veröffentlichungsrechte.
 PR-, Fork-, Tag- oder manuelle Events bekommen diese Rechte nicht.
 
+Ein separates signiertes `host-core.tar` enthält die Anwendung als Wheel und genau
+die fünf hash-gepinnten Core-Abhängigkeiten für Linux x86_64/Python 3.14. Der Host
+installiert sie offline in ein eigenes unveränderliches Release-Venv; Audio-,
+Discord- und Inferenzbibliotheken gehören nicht in diesen Host-Core. Das Bundle
+verweigert private Wheel-Inhalte und unvollständige oder ungepinnte Abhängigkeiten.
+
 Die Hostauslieferung muss Signatur, Signer-Workflow, Hosted Runner, `refs/heads/main`,
 Quellrevision und aktuell erfolgreiche CI verifizieren, bevor sie ein Artefakt
 importiert. Öffentliche Assets und beigelegte Sigstore-Bundles ermöglichen das

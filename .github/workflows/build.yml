@@ -52,6 +52,16 @@ jobs:
             skopeo copy "docker-daemon:${image}" "oci-archive:release/${stage}.oci.tar:${reference}"
             python3 scripts/release_image.py --archive "release/${stage}.oci.tar" --repository "${REPOSITORY}" --revision "${REVISION}" --stage "${stage}" --output "release/${stage}.json"
           done
+      - name: Build the closed Python 3.14 host core without audio or inference dependencies
+        env:
+          REVISION: ${{ github.sha }}
+        run: |
+          python3 -m venv .cache/release-build-venv
+          .cache/release-build-venv/bin/python -m pip install --require-hashes -r requirements/build.txt
+          .cache/release-build-venv/bin/python -m build --wheel --no-isolation
+          python3 scripts/check_public.py --wheel dist/sessionscribe-0.1.0-py3-none-any.whl
+          .cache/release-build-venv/bin/python -m pip download --index-url https://pypi.org/simple --only-binary=:all: --require-hashes --platform manylinux_2_17_x86_64 --platform manylinux_2_28_x86_64 --python-version 3.14 --implementation cp --abi cp314 -r requirements/core.txt --dest .cache/host-core-wheels
+          python3 scripts/host_bundle.py --revision "${REVISION}" --wheelhouse .cache/host-core-wheels --application dist/sessionscribe-0.1.0-py3-none-any.whl --requirements requirements/core.txt --output release
       - name: Attest artifacts from the protected-main hosted build
         id: provenance
         uses: actions/attest-build-provenance@8beda2b7ed98355c0e97c0a63bec38ae472e66c4 # v4.2.2
