@@ -17,7 +17,7 @@ def inspect(path: Path, repository: str, revision: str, stage: str):
     if (
         not re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+", repository)
         or not re.fullmatch(r"[a-f0-9]{40}", revision)
-        or stage not in {"recorder", "stt", "evaluator"}
+        or stage not in {"recorder", "stt", "evaluator", "voice-test"}
         or path.is_symlink()
         or not path.is_file()
         or not 1 <= path.stat().st_size <= MAX_ARCHIVE
@@ -66,6 +66,8 @@ def inspect(path: Path, repository: str, revision: str, stage: str):
             if stage == "recorder"
             else ["stt-worker" if stage == "stt" else "evaluate-worker"]
         )
+        if stage == "voice-test":
+            expected_cmd = ["voice-test", "--policy", "/config/voice-test.json"]
         if (
             config.get("os") != "linux"
             or config.get("architecture") != "amd64"

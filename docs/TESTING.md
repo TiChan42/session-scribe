@@ -158,6 +158,23 @@ Moduswechsel, getrennte Sitzungen/Budgets auch bei gleichem Modus und blockierte
 
 ## Discord-Steuerungsclient
 
+Der separate `voice-test`-Einstieg ist ausschließlich für eine ausdrücklich
+autorisierte Einzelprobe vorgesehen. Er aktiviert keine allgemeinen Slash-Aufnahmen.
+Ein eigenes Testimage verwendet den MIT-lizenzierten Pycord-Empfangskandidaten
+`10a5e8cf13bd8db21f95baf62cf866056d1e1091` mit vollständiger Archiv-Prüfsumme,
+vollständiger Paketaufnahme und einem korrigierten, abbrechbaren 5-Sekunden-UDP-
+Keepalive. PyNaCl und davey sind getrennt mit Hashes gepinnt. Die Lizenz bleibt
+im erzeugten Upstream-Wheel erhalten. Der Build importiert den Empfangsadapter.
+
+Die private, kurzlebige Betreiberfreigabe bindet genau eine Person, Guild und
+Sprach-/Ausgabekanal. Teilnehmerwechsel, Gatewayverlust, Empfangsfehler oder ein
+voller Frame-Puffer stoppen die Probe; Audiodaten gehen segmentiert auf Platte.
+Ein sichtbarer Stoppknopf und das Verlassen des Sprachkanals benötigen keine Cloud.
+Der Root-Host muss ausschließlich das ausgehandelte, separat per Discord-DNS
+verifizierte öffentliche UDP-Ziel zeitlich befristet freigeben; IPv4 und IPv6
+bleiben ansonsten gesperrt. Der Container erhält weder Engine- noch Adminzugriff.
+Ein erfolgreicher Einzeltest ersetzt keinen Langzeit-/Mehrsprechernachweis.
+
 Synthetische Tests prüfen reale Pycord-Commandschemas inklusive Unterbefehltypen,
 authentische Interaktionsidentität, Manage-Guild-Prüfung, Guild-Kapazität/Allowlist,
 dauerhaftes Setup, fremde/partielle Kanäle, Anhänge-/Mention-Rechte, No-Follow-
