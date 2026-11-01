@@ -1,8 +1,10 @@
 # SessionScribe
 
-Für die Inbetriebnahme existiert ein separates, streng begrenztes Einzeltestimage
-mit gepinntem DAVE-Empfangskandidaten. Es startet nur mit einer kurzlebigen privaten
-Betreiberfreigabe für eine bestimmte Person und bestimmte Kanäle. Der reguläre Bot
+Für die Inbetriebnahme existiert ein separates Einzeltestimage mit gepinntem
+DAVE-Empfangskandidaten. Sein manueller Listener wartet auf `/testaufnahme` in der
+vom Betreiber freigegebenen Testguild. Deployment und Reconnect starten keine
+Aufnahme. Der Command ist an eine bestimmte Person und feste Kanäle gebunden;
+Netzwerkfreigaben erhalten kurze Ablaufzeiten. Der reguläre Bot
 behält seine Empfangssperre bis zur vollständigen Qualifikation; Details stehen
 in [docs/testing.md](docs/testing.md).
 
@@ -16,13 +18,12 @@ Queue → Broker-Handoff → STT → validiertes LLM-Protokoll → Versand-Outbo
 der synthetischen Demo durch. Echte lokale CPU/int8-STT mit künstlicher deutscher
 Sprache ist ebenfalls geprüft; Cloud und Supervisor sind dort Fixtures.
 
-**Entwicklungsstand:** Der Discord-Steuerungsclient und die Registrierung der Slash
-Commands sind angebunden; Guild-Konfiguration wird dauerhaft gespeichert. Aufnahme
-bleibt bis zum geprüften DAVE-Empfänger gesperrt. Host-Broker, fester Supervisor und eigener
-Inferenzgateway sind im Infrastrukturprojekt synthetisch geprüft. Eine native Ansible-Rolle
-für Units, Rechte und Gateway-Firewall ist vorbereitet; Provisionierung,
-Container-/Linux-Abnahme und Deployment-Apply bleiben offen. Kein produktiver Serverdienst
-wurde gestartet.
+**Betriebsfreigabe:** Guild-Konfiguration und Commands sind unabhängig vom
+Empfangstest nutzbar. Der reguläre Aufnahme-Gate bleibt bis zum geprüften
+DAVE-Empfänger gesperrt. Das Infrastrukturprojekt verwaltet getrennte Bereiche,
+signierte Artefakte, Host-Broker, Supervisor und Inferenzgateway. Native
+Qualifikation, konkrete Deploymentstände und Prüfbelege gehören in den privaten
+Betreiberkontext; ein laufender Steuerungsclient belegt keinen Audioempfang.
 
 ## Tokens hinterlegen
 

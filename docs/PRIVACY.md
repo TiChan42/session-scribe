@@ -69,3 +69,12 @@ Job-Credentials sind kurzlebig und nur für eine exakt gebundene Anfrage gültig
 Das separate Quotaledger speichert Kontingente und verbrauchte Credential-Hashes,
 keine Transkripte oder Modellantworten. Es muss privat gesichert werden; ein
 Neustart darf Verbrauch oder Einmalverwendung nicht zurücksetzen.
+## Manuelle Empfangsprobe
+
+Der Betreiber kann einen Einzeltest für eine ausdrücklich zustimmende Person
+vorbereiten. Ohne deren `/testaufnahme`-Command wird kein Sprachkanal betreten.
+Der Command ist nur im festgelegten Protokollkanal und für diese Identität mit
+Manage-Guild-Recht erlaubt. Startmeldung und Stoppknopf sind sichtbar; Verlassen
+des Sprachkanals, Teilnehmerwechsel oder das Zeitlimit beenden die Aufnahme.
+Die für die Probe bestätigte Cloud-Einwilligung wird in ihren privaten Metadaten
+gespeichert. Eine vorbereitete Probe ist kein bestandener Empfangsnachweis.

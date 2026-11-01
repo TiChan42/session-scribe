@@ -185,6 +185,14 @@ abweichen. Sie benötigt deshalb ein vom Gateway für genau diesen Voice-Host
 ausgestelltes, kurzlebiges Einmalticket. Es erlaubt ein einziges öffentliches
 Adress-/Portpaar; private/übersetzte Adressen und Wiederverwendung werden verweigert.
 
+`voice-test-listener` wartet ausschließlich auf `/testaufnahme` in der vom
+Betreiber festgelegten Testguild. Er registriert diesen einen Guild-Command,
+ohne globale Commands des Steuerungsclients zu ersetzen. Nur die authentifizierte
+freigegebene Person mit Manage-Guild-Recht darf ihn im festgelegten Protokollkanal
+starten. Start, Reconnect und Deployment lösen keine Aufnahme aus. Die manuelle
+Freigabe ist auf vier Verbindungsversuche je UTC-Tag begrenzt; ein rootgeschützter
+Zähler überlebt Neustarts. Erst der Command erzeugt die kurzlebige Einzelaufnahme.
+
 Synthetische Tests prüfen reale Pycord-Commandschemas inklusive Unterbefehltypen,
 authentische Interaktionsidentität, Manage-Guild-Prüfung, Guild-Kapazität/Allowlist,
 dauerhaftes Setup, fremde/partielle Kanäle, Anhänge-/Mention-Rechte, No-Follow-

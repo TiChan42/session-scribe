@@ -173,3 +173,12 @@ Reparaturkopien mit synthetischen Tests und eigene Branches von geschütztem mai
 zurück nach main umsetzen. Keine Produktionssecrets/-gespräche in Workspaces,
 keine direkten Main-Pushes und kein automatischer Merge. Health/SBOM-Anbindung
 ist davon getrennt und bleibt Bestandteil der Deploymentvorbereitung.
+## Manueller Qualifikationstest
+
+Das Infrastrukturfeature bereitet standardmäßig nur den manuellen Listener vor.
+Er registriert `/testaufnahme` ausschließlich in der freigegebenen Testguild und
+wartet; keine Aufnahme beim Deployment oder Neustart. Der eigene Gateway begrenzt
+Verbindungen auf vier pro UTC-Tag und auf geprüfte, zeitlich befristete Ziele.
+Vor der Bereitschaftsmeldung die frische revisionsgebundene Listener-Healthdatei
+und die tatsächliche Guild-Command-Registrierung prüfen. Readiness startet keinen
+Test. `deploy: false` stoppt Listener und Gateway mit Datenerhalt.
