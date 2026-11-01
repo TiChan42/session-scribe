@@ -1,5 +1,11 @@
 # SessionScribe
 
+Für die Inbetriebnahme existiert ein separates, streng begrenztes Einzeltestimage
+mit gepinntem DAVE-Empfangskandidaten. Es startet nur mit einer kurzlebigen privaten
+Betreiberfreigabe für eine bestimmte Person und bestimmte Kanäle. Der reguläre Bot
+behält seine Empfangssperre bis zur vollständigen Qualifikation; Details stehen
+in [docs/testing.md](docs/testing.md).
+
 Ein gemeinsamer Steuerungsbot mit Konfiguration je Discord-Server und ein Pool
 zusätzlicher Aufnahme-Bots für parallele Sprachkanäle derselben Guild. Die beiden
 Modi heißen **Meeting** und **DnD**. Daten, Queues, Ergebnisziele und Inferenzbudgets

@@ -44,7 +44,7 @@ jobs:
         run: |
           python3 scripts/check_public.py
           mkdir release
-          for stage in recorder stt evaluator; do
+          for stage in recorder stt evaluator voice-test; do
             image="sessionscribe-${stage}:${REVISION}"
             reference="ghcr.io/${REPOSITORY,,}-${stage}:${REVISION}"
             docker build --file "containers/${stage}.Dockerfile" --label "org.opencontainers.image.revision=${REVISION}" --tag "${image}" .

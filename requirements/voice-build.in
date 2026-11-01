@@ -1,0 +1,2 @@
+-r build.in
+setuptools-scm==9.2.2

@@ -68,6 +68,10 @@ def main():
         "!requirements/core.txt",
         "!requirements/recorder.txt",
         "!requirements/stt.txt",
+        "!requirements/voice-build.txt",
+        "!requirements/voice-test.txt",
+        "!scripts/",
+        "!scripts/voice_candidate.py",
         "!containers/",
         "!containers/*.Dockerfile",
     ]

@@ -15,6 +15,8 @@ def main():
     example.add_argument("--mode", choices=("meeting", "dnd"), default="meeting")
     bot = commands.add_parser("bot", help="Discord control bot; voice remains gated")
     bot.add_argument("--policy", type=Path, required=True)
+    voice_test = commands.add_parser("voice-test", help="operator-only short DAVE qualification")
+    voice_test.add_argument("--policy", type=Path, required=True)
     health = commands.add_parser("control-health", help="fresh control readiness for one revision")
     health.add_argument("--root", type=Path, required=True)
     health.add_argument("--revision", required=True)
@@ -33,6 +35,10 @@ def main():
         raise SystemExit(0 if control_ready(args.root, args.revision) else 1)
     elif args.command == "bot":
         from .bot import run
+
+        run(args.policy)
+    elif args.command == "voice-test":
+        from .voice_test import run
 
         run(args.policy)
     elif args.command == "demo":
