@@ -1,0 +1,297 @@
+AKTUELLE AUSLIEFERUNGSFREIGABE:
+Der Betreiber autorisiert jetzt die vollständige Umsetzung, danach GitHub-Push,
+Bereitstellung auf dem konfigurierten Server, Sicherheitstests und Anbindung an
+bestehendes Management/Ollama. Automatische Dependency-Reparaturen und GitHub-PRs
+des Managers sind auf ausdrücklichen Wunsch jetzt ein zukünftiges Feature.
+Dafür derzeit keine Server-Credentials einrichten. Später nur eigene Branches
+von main zurück nach main, kein direkter Main-Schreibzugriff, keine fremden
+Credentials und keine zusätzlichen Hostrechte im Reparatur-Container.
+Produktionsdeployment nur nach geschütztem Merge/CI,
+Bereitschaftsprüfung und mit Rückfall. Der Benutzer erstellt den Discord-Testserver
+später selbst; bis dahin keine Live-Aufnahme oder Kanalnachricht in fremden Guilds.
+Ein laufender Steuerungsbot ersetzt keinen DAVE-Empfangsnachweis.
+
+AKTUELLE BENUTZERVORGABE (hat bei Widersprüchen Vorrang):
+Ein gemeinsamer Steuerungsbot mit Konfiguration je Discord-Server über Slash
+Commands. Zusätzlich ist ein Pool separater Aufnahme-Bot-Identitäten autorisiert,
+damit mehrere Sprachkanäle derselben Guild gleichzeitig aufgenommen werden können. Die Modi heißen Meeting und DnD. Guild-ID, nicht Modus,
+ist die Datengrenze für Konfiguration, Sitzungen, Queues, Ziele und Budgets.
+Aufnahme/STT/Auswertung behalten getrennte technische Rechte; ein gemeinsamer
+Bot-Prozess besitzt jedoch anwendungsseitig Zugriff auf seine eingerichteten Guilds.
+Das Steuerungsbot-Token liegt ausschließlich lokal in .local/bot.env unter
+DISCORD_TOKEN. Zusätzliche Aufnahme-Tokens erhalten getrennte private Dateien
+unter .local/recorders/, niemals Discord-Commands oder STT-/LLM-Container.
+Keine Serverübertragung ohne gesonderte Deploymentfreigabe; Token niemals ausgeben.
+
+Weitere aktuelle Vorgaben: je Guild ein Default-Protokollkanal und je Sprachkanal
+ein Override, Vererbung oder deaktivierte Veröffentlichung. Jede abgeschlossene
+Aufnahme mit Audio wird dauerhaft eingereiht. Audio direkt segmentiert auf Platte,
+keine ganzen Calls im RAM. Parallele Aufnahmen dürfen weiterlaufen, während andere
+Sessions global begrenzt per STT und LLM verarbeitet werden. Ausschließlich
+validierte LLM-Protokolle automatisch ins festgelegte Ziel posten; Rohdaten erhalten.
+
+AUFTRAG: SESSIONSCRIBE IMPLEMENTIEREN UND DIE BEREITSTELLUNG VORBEREITEN
+
+Du arbeitest als Entwicklungsagent im Repository SessionScribe. Lies zuerst
+AGENTS.md und danach, falls vorhanden, .local/server-context.txt. Die lokale
+Datei erklärt den tatsächlichen Server, den SSH-Zugang und das separate
+Ansible-Projekt. Diese Informationen dürfen nicht ins öffentliche Repository,
+in Images, CI-Artefakte oder veröffentlichte Texte übernommen werden.
+
+Das Repository ist öffentlich und startet als neues Projekt. Der Auftrag ist,
+die Anwendung und eine prüfbare, sichere Deploymentvorbereitung zu bauen.
+Serverinspektion darf zunächst nur lesend erfolgen. Dieser Prompt allein ist
+keine Freigabe für Produktivänderungen, Veröffentlichung oder echte Aufnahmen.
+Entwickle selbständig weiter, soweit keine fehlenden Credentials oder offene
+Upstream-Rechte den konkreten Arbeitsschritt verhindern. Liefere Code und
+Prüfergebnisse statt ausschließlich eines weiteren Konzepts.
+
+1. ZWECK UND NUTZERERLEBNIS
+
+Baue einen selbst hostbaren Discord-Bot mit zwei konfigurierbaren Modi:
+
+A) Meetings:
+   Sprecherbezogenes Transkript; Themen, Entscheidungen, Aufgaben mit
+   Verantwortlichen und ausdrücklich genannten Fristen, offene Fragen.
+   Vorschläge nicht als Beschlüsse ausgeben. Unbekannte Zuständigkeiten und
+   Termine bleiben unbekannt. Unsicherheit, Verneinungen und Zahlen erhalten.
+
+B) DnD-Runden:
+   Sprecher, Spieler und konfigurierbare Charakter-/Kampagnenzuordnung.
+   Unterscheide Story/In-Character, Regeln/Würfel/Mechanik, spielbezogene
+   Out-of-Character-Planung, sonstigen Meta-Talk/Smalltalk und unklare bzw.
+   gemischte Aussagen. Spielleiter können mehrere Figuren sprechen.
+   Erstelle eine nachvollziehbare Chronik und eine kurze Sitzungszusammenfassung,
+   ohne Handlung, NPCs oder Ergebnisse zu erfinden. Lösche das Original nicht
+   zugunsten einer vom Modell bereinigten Fassung.
+
+Beide Modi verwenden denselben Bot und Code. Jede Guild erhält getrennte
+Konfiguration, Berechtigungen, Daten, Queues, Budgets und Ergebnisziele. Kein gemeinsamer
+beschreibbarer Datenbereich und keine projektübergreifende Gesprächssuche.
+
+Bedienung über Slash Commands: Aufnahme starten, pausieren, fortsetzen,
+stoppen, Status/Queue ansehen, Verarbeitung anfordern, Ergebnis abrufen und
+eigene berechtigte Sitzungen löschen. Prüfe jede Aktion anhand numerischer
+Guild-, Kanal-, Rollen- und Nutzer-IDs und einer zum Auftrag passenden ACL.
+Ein Rollenname wie "admin" und eine Discord-Anzeigeidentität reichen nicht.
+Ausgaben ausschließlich in feste freigegebene Zielkanäle, keine Massenmentions.
+
+Aufnahme nur nach ausdrücklichem Start und Teilnehmerzustimmung, mit sichtbarer
+Statusmeldung. Bei neuen Teilnehmern bis zur Bestätigung pausieren. Auch ein
+Notstopp muss ohne Cloud-Verfügbarkeit funktionieren. Kein heimliches Auto-Join
+oder automatisches Aufzeichnen aller Sprachkanäle. Keine TTS-Anforderung.
+
+2. BARD BOT UND DIE NOTWENDIGEN VORPRÜFUNGEN
+
+Gewünschter Ausgangspunkt ist https://github.com/Aitgray/BardBot.
+Die Vorprüfung des Commits 978a98d2bca2948f42d5a672324bc5a466718c35 ergab:
+- keine ausgewiesene Lizenz; Rechte vor Quellcodeübernahme klären;
+- Audio sammelt sich im RAM, zusätzlich werden PCM-Chunks gehalten;
+- openai-whisper statt faster-whisper; CPU-Fallback lädt das Modell im
+  laufenden Bot-Prozess, wo es nach dem Auftrag verbleiben kann;
+- Englisch ist fest eingestellt; Text wird pro Nutzer zusammengefasst und
+  mit unbrauchbaren gleichen Start-/Endzeitstempeln exportiert;
+- Ollama-URL und lokales Modell sind im Code fest hinterlegt;
+- Aufnahme-/Stoppbefehle ohne die benötigte Anwendungs-ACL;
+- Compose startet zusätzliche Ollama-/GPU-Infrastruktur und bindet Quellcode
+  beschreibbar ein. Das passt nicht zum Zielbetrieb.
+
+Prüfe den aktuellen Upstream erneut. Eine fehlende Lizenz nicht selbst ergänzen
+und fremden Code nicht stillschweigend als eigene Implementierung übernehmen.
+Solange das ungeklärt ist, sind eigene Spezifikation, Tests, Infrastruktur und
+unabhängiger Code auf Basis ausdrücklich lizenzierter Komponenten möglich.
+Keine Personen anschreiben oder Issues eröffnen ohne Auftrag.
+
+Discord verwendet DAVE für verschlüsselte Sprachverbindungen. Prüfe explizit
+den EMPFANG und die Entschlüsselung mehrerer Sprecherspuren. Pycord 2.7.1 war
+im untersuchten BardBot gepinnt; selbst 2.8.1 warnte bei der letzten Recherche
+vor Voice-Receive-Problemen. Aktuelle Quellen für die erneute Prüfung:
+https://github.com/Pycord-Development/pycord/issues/3139
+https://github.com/Pycord-Development/pycord/pull/3159
+https://github.com/Pycord-Development/pycord/issues/3388
+https://docs.discord.com/developers/topics/voice-connections
+
+Ein Bibliotheksupgrade oder erfolgreicher Beitritt beweist keine Aufnahme.
+Empfangsschicht als austauschbaren Adapter bauen. Keinen beweglichen PR-Branch
+als Produktionsabhängigkeit verwenden; Kandidaten nach Review exakt pinnen.
+
+3. PIPELINE, ZEITACHSE UND AUSFALLSICHERHEIT
+
+Aufnahme -> tenantprivate dauerhafte Queue -> STT nach Bedarf -> zeitlich
+geordnetes Rohtranskript -> Cloud-Auswertung -> validiertes Ergebnis -> Discord.
+
+Recorder:
+- Keine Whisper-, Torch- oder Embeddingmodelle importieren/laden.
+- Pro Discord-Nutzer kurze Audiodateien direkt auf Platte schreiben, begrenzte
+  Puffer, Dateigrößen, Teilnehmerzahl und Aufnahmedauer. Kein gesamter Call in
+  BytesIO/RAM. Sinnvolle komprimierte Ablage mit getesteter Audioqualität.
+- Gemeinsame Sitzungszeitachse aus Zeit-/Paketbezug erhalten: Stille, Versatz,
+  Überlappung, Paketverlust und erneuter Beitritt dürfen die Reihenfolge nicht
+  in eine Reihenfolge vollständiger Sprecher-Monologe verwandeln.
+- Discord-ID identifiziert eine Verbindung, keine biologische Person.
+  Geteilte Mikrofone sind eine dokumentierte Grenze; keine Voiceprints nötig.
+- Bei Deploy/Disconnect geordnet abschließen; unfertige Teile nach Absturz
+  wiederfinden und kennzeichnen. Keine heimliche Fortsetzung einer Aufnahme.
+
+Queue und Dispatcher:
+- Einfacher dauerhafter Zustand, beispielsweise SQLite und atomare Manifeste;
+  keine Redis-/Qdrant-Pflicht. Schema und Migrationen dokumentieren.
+- Typisierte Zustände, gesicherte Auftragsübernahme, globale STT-Sperre,
+  Timeouts, begrenzte Retries/Backoff und Wiederanlauf ohne Doppelverarbeitung.
+- Eingaben als untrusted behandeln: Größen/Codecs/Pfade/IDs prüfen, kein
+  Path Traversal, Symlink-Ausbruch oder vom Auftrag vorgegebener Shell-Befehl.
+- Nur festgelegte Units/Images starten. Recorder erhält keine Engine-API und
+  keine beliebige Host-Ausführung. Handoffs nur für den konkreten Auftrag;
+  getrennte Schreibbereiche und nur notwendige lesbare Eingaben.
+
+STT:
+- faster-whisper/CTranslate2, mehrsprachiges small, CPU/int8 als Ausgangspunkt,
+  Deutsch und bei Bedarf gemischtes Deutsch/Englisch; nicht small.en.
+- Pro Auftrag kurzlebiger Container, global maximal einer gleichzeitig.
+  Modell nur dort laden; Spuren/Segmente nacheinander verarbeiten und den
+  Prozess anschließend beenden. Modellcache read-only; kein Netzwerkzugang,
+  kein Discord-Token, keine Ollama-/Host-/Git-Zugangsdaten.
+- Ausgangsbudget ca. 2,5 GiB RAM und zwei CPU-Kerne; CPU-Threadpools und ffmpeg
+  begrenzen. Diese Werte messen und bei Bedarf passend ändern, nicht garantieren.
+- Neue Aufträge nur bei genügend verfügbarem RAM, CPU- und Plattenreserve.
+  Sicherheitsarbeiten und bestehende Dienste haben Vorrang. Bei Druck begrenzt
+  warten/fortsetzbar pausieren statt andere Dienste durch OOM zu gefährden.
+- Kanonische Segmente mit stabiler ID, Session, Sprecher, Start/Ende, Text und
+  erkannten Lücken. Überlappende Audiofenster deduplizieren, echte gleichzeitig
+  gesprochene Aussagen erhalten. Kein einzelner Textblock pro kompletter Spur.
+
+4. OLLAMA CLOUD UND AUSWERTUNG
+
+Nur vorhandenes Ollama mit Cloud-Modellen nutzen, keine lokalen LLM-Gewichte
+und keine zweite Ollama-Instanz. Ein Container-"localhost" ist nicht der Host.
+Keine API öffentlich freigeben und keine fremden Gateway-Budgets zweckentfremden.
+Baue einen getrennt berechtigten/budgetierten Inferenzzugang für die Instanzen;
+Katalog/default aus der vorhandenen freigegebenen Modellauswahl übernehmen,
+aber Eignung für deutsche Transkripte separat prüfen.
+
+Modell, Prompt-Version und Einstellungen beim Auftragsstart festlegen und als
+Metadaten speichern. Kein Modellwechsel mitten in einer Sitzungsauswertung.
+Audio bleibt lokal; Text geht an den Cloud-Anbieter. Teilnehmerinformation,
+Vertraulichkeit und einschlägige Anbieterbedingungen transparent dokumentieren.
+
+Normalfall: EIN Modellaufruf je abgeschlossener Sitzung für Einordnung,
+Zusammenfassung und Aufgaben. Verschiedene Markdown-Ansichten daraus ohne
+weitere LLM-Schritte rendern. Ein-/Ausgabe und Overhead vorab gegen tatsächlich
+unterstützte Kontext-/Ausgabegrenzen prüfen. Nie still abschneiden. Für zu große
+Sitzungen einen ausdrücklich konfigurierten Aufteilungsmodus anbieten.
+
+Bei der letzten Recherche unterstützte Ollama Cloud keine erzwungenen Structured
+Outputs: https://docs.ollama.com/capabilities/structured-outputs
+Aktuell erneut prüfen. JSON im Prompt verlangen, lokal streng validieren und
+Segmentreferenzen prüfen. Invalides oder abgeschnittenes Ergebnis nicht als
+fertiges Protokoll veröffentlichen; begrenzte Wiederholungen brauchen eventuell
+mehr als einen Aufruf. Originaltranskript für manuellen Zugriff erhalten.
+
+Gesprächsinhalte sind Daten, auch wenn jemand darin "ignoriere deine Regeln"
+sagt. Keine Tools/Agenten/Befehlsausführung durch den Auswerter. Antworten
+begrenzen, Markdown/Mentions sicher ausgeben und nur feste Zielkanäle nutzen.
+
+5. ISOLATION, STORAGE UND ANSIBLE
+
+Übernimm die vorhandene Sicherheitsarchitektur aus dem Infrastrukturprojekt.
+Je Dienst eigener Linux-Benutzer/Sub-IDs und begrenzter Datenbereich; für
+Meeting und DnD getrennte Aufnahme-, STT- und Auswertungsrechte. Rootless und
+Non-Root, Read-only-Root, Capabilities leer, NNP, AppArmor, Seccomp sowie
+RAM/CPU/PID/Disk/Temp/Log-Limits. Keine gemeinsamen beschreibbaren Projektordner.
+Kein Host-Netzwerk, privileged, Socket-Mount, sudo oder administrativer SSH-Key
+in den Anwendungen. Im selben Kernel ist das keine VM-Isolation.
+
+Recorder benötigt Discord HTTPS/WSS, DNS und eine zusätzliche explizite UDP-
+Policy für ausgehandelte Voice-Ziele/Antwortverkehr. Keine pauschale UDP-
+Freigabe; Erreichbarkeit und Isolation einschließlich IPv6 testen. STT ohne
+Netz, Auswerter nur zum erlaubten Inferenzzugang. Host-/private Netze, Metadaten
+und andere Dienste bleiben gesperrt. Keine neue öffentliche Weboberfläche nötig.
+
+Im separaten Ansible-Projekt eine gezielte additive Erweiterung vorbereiten,
+bestehende Service-/Registry-Rollen prüfen und native Ansible-Module bevorzugen.
+Keine neue Grundinstallation und keine Aufhebung der vorhandenen Migrationssperre.
+Aktuelle Laufzeitpfade, belegte IDs, Ports und die Disk-Reserve stehen im privaten
+Kontext und müssen vor Zuweisungen erneut geprüft werden.
+
+Inventory schaltet Gesamtfeature, jede Instanz, Aufnahme/Cloud-Verarbeitung,
+ACLs/Zielkanäle, Modell, Budgets, Ressourcen, Dauer/Größe/Teilnehmer, Aufbewahrung,
+Backup und gegebenenfalls Auto-Update. Semantik: enabled=false überspringt
+Verwaltung; deploy=false stoppt mit Datenerhalt. Validierung, Defaults und
+Beispielinventory gemeinsam pflegen. Kein Shell-Installer als Ansible-Ersatz.
+Image-Digests pinnen, Secrets mit no_log/diff=false behandeln, Starts/Neustarts
+nur bei Anlass. Idempotenz mit zweitem unverändertem Lauf prüfen, sobald ein
+Test- oder später autorisiertes Deployment tatsächlich ausgeführt werden kann.
+
+Storagebedarf inklusive Images, Modellcache, paralleler Aufnahmen, STT-Ausgaben
+und Rollback berechnen. Keine bestehenden Filesysteme verkleinern oder formatieren.
+Kurze Dateien, Quoten und harte Aufnahmestopps verhindern ein volles Host-FS.
+Audio-Löschung erst nach belegter erfolgreicher Verarbeitung und konfigurierter
+Aufbewahrung; keine stillschweigende Löschung fehlgeschlagener Aufträge.
+Retention-Vorschläge dokumentieren, nicht als bereits genehmigt ausgeben.
+Backups verschlüsselt außerhalb des Hosts; Datenbanken konsistent sichern und
+Restore testen. Eine gelegentlich angeschlossene Platte ist kein laufendes
+Offsite-Backup. Git sichert keine Audios, Datenbanken oder Laufzeit-Secrets.
+
+6. REPOSITORY, CI UND BETRIEBSVERTRAG
+
+Saubere Python-Paketstruktur, festgelegte Abhängigkeiten und getrennte schlanke
+Container-Builds für Recorder, STT und Auswertung. Keine GPU-/PyTorch-Basis für
+den ständig laufenden Bot. RAG, Obsidian-Sync und Embeddingmodell sind nicht
+Teil der ersten Version. Laufzeitdaten und tatsächliche Gespräche nie in Git.
+Docker/OCI-Buildkontexte explizit klein halten; .local und andere ignorierte
+Dateien werden durch .gitignore allein NICHT aus einem Build ausgeschlossen.
+
+Dieses Repo liegt auf GitHub. Eine schlanke GitHub-Actions-CI vorbereiten:
+- Lint/Format und fokussierte Tests ohne echte Tokens/Server auf PRs;
+- gepinnte Actions, minimale Tokenrechte, keine privilegierte PR-Ausführung;
+- später Build/Deployment nur nach Merge auf geschützte main, niemals PR-,
+  Fork-, Tag- oder manuellem Event implizit Produktions-Secrets geben;
+- Schutz gegen direkte Pushes separat konfigurieren/dokumentieren; ein
+  push-main-Filter allein beweist keinen Merge;
+- serialisieren, veraltete Deployments abweisen, Readiness dieser Revision,
+  Rollback und aktive Aufnahme sauber behandeln;
+- eigener beschränkter Deployment-Schlüssel mit Forced Command statt Admin-Key.
+Der frühere GitLab-Runner eines anderen Projekts ist hier keine automatisch
+verfügbare Infrastruktur. Keine Spiegelung oder neue Integrationen ohne Auftrag.
+
+Für die vorhandene Sicherheitsautomatik Update-/Health-Vertrag und SBOM-
+Anbindung vorbereiten. Keine neuen beliebigen Host-Rechte für OpenCode und keine
+Produktionsgespräche/Secrets in Reparatur-Workspaces. Bei Wartung vorab begrenzte
+Statusmeldung versuchen; Wiederanlauf darf keine Aufnahme heimlich starten.
+Ausführliche regelmäßige Prüfungen höchstens stündlich; CI und gezielte Checks
+nach Änderungen sind davon getrennt. Keine Minuten-LLM-Tests als Lebenszeichen.
+
+Dokumentiere README, AGENTS, Architektur, Konfigurationsbeispiele, Daten-/Secret-
+Verträge, Bedienung/Berechtigungen, Retention/Cloud-Verarbeitung, Betrieb,
+Backup/Restore und TESTING. Öffentliche Beispiele bleiben generisch. Betreiber-
+Steckbrief und generierte Serverdokumentation gehören zusätzlich ins Ansible-
+Projekt; echte Zugangsdaten und Topologie bleiben in privatem Kontext/Vault.
+
+7. ABNAHME UND ARBEITSREIHENFOLGE
+
+Beginne mit Repo-/Regelprüfung und lesender Bestandsaufnahme. Halte bestätigte
+Fakten und offene Punkte auseinander. Prüfe Lizenz und aktuellen DAVE-Empfang,
+baue dann einen vertikalen Weg von synthetischer Aufnahme über Queue und STT
+bis zur validierten Auswertung, bevor du zusätzliche Funktionen ausbaust.
+
+Wesentliche Nachweise:
+- Im Recorder und im Leerlauf ist kein Whisper-Modell geladen.
+- Global ein STT-Job, begrenzter RAM, Admission bei Ressourcenmangel.
+- Zeitachse bei zwei Sprechern, Überlappung, Stille, Paketverlust und Rejoin.
+- Echter autorisierter DAVE-Langzeittest statt bloß erfolgreichem Join.
+- Wiederanlauf, Disk-full, Cloud-Ausfall, invalide Antworten und Kontextüberlauf
+  ohne verlorene Rohdaten oder doppelte Veröffentlichung.
+- ACL-Verweigerung, unerlaubte Zielkanäle und Cross-Tenant-Datei-/Netzzugriffe.
+- Prompt-Injection-Inhalte bleiben ohne Host-/Werkzeugwirkung.
+- Keine lokalen Betreiberinformationen/Secrets in Staging, Build oder Artefakten.
+- Zweiter unveränderter Ansible-Lauf changed=0; Deploy-Rollback und Restore.
+
+Nutze nur synthetische oder ausdrücklich freigegebene Audio-/Textproben und
+Kennungen. Fehlende Bot-Tokens, Kanal-IDs, Lizenzrechte, Cloud-Budgets oder eine
+Freigabe für echte Aufnahmen nicht erfinden. Unabhängig davon implementierbare
+Teile fertigstellen und verbleibende Voraussetzungen präzise benennen.
+
+Starte jetzt mit der lokalen Umsetzung. Berichte knapp, was funktioniert,
+welche Prüfungen tatsächlich liefen und was für einen späteren produktiven
+Betrieb noch fehlt. Ohne eigene Produktionsfreigabe keinen Dienst umstellen,
+keine öffentlichen Inhalte veröffentlichen und keine Discord-Nachricht senden.
