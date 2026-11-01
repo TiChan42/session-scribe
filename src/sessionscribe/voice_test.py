@@ -30,7 +30,7 @@ class TestPolicy(StrictModel):
     participant_id: Snowflake
     expires_at: int
     cloud_consent: bool
-    duration_seconds: int = Field(default=60, ge=15, le=120)
+    duration_seconds: int = Field(default=60, ge=15, le=60)
     inference: InferenceSettings
 
 
@@ -270,6 +270,13 @@ async def test(policy):
         voice = await channel.connect(cls=MutedVoiceClient, timeout=30, reconnect=False)
         state = voice._connection
         phase = "dave_readiness"
+        # The SDK marks voice connected after transport keys arrive. MLS/DAVE
+        # commits arrive later on its ongoing websocket poll task.
+        async with asyncio.timeout(15):
+            while state.dave_session is None or not state.dave_session.ready:
+                if not membership_ok() or not voice.is_connected():
+                    raise PermissionError("test membership or voice connection lost")
+                await asyncio.sleep(0.1)
         if (
             state.dave_protocol_version < 1
             or state.dave_session is None
