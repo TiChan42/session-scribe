@@ -1,0 +1,68 @@
+name: Build reviewed main
+on:
+  push:
+    branches: [main]
+permissions:
+  contents: read
+  pull-requests: read
+concurrency:
+  group: sessionscribe-production-release
+  cancel-in-progress: false
+jobs:
+  merged-main:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - run: python3 scripts/merged_main.py
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+  build:
+    needs: merged-main
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install the official distribution OCI transport if absent
+        run: |
+          if ! command -v skopeo >/dev/null; then
+            sudo apt-get update -qq
+            sudo apt-get install --no-install-recommends -y skopeo
+          fi
+      - name: Build and inspect credential-free immutable OCI artifacts
+        env:
+          REVISION: ${{ github.sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          python3 scripts/check_public.py
+          mkdir release
+          for stage in recorder stt evaluator; do
+            image="sessionscribe-${stage}:${REVISION}"
+            reference="ghcr.io/${REPOSITORY,,}-${stage}:${REVISION}"
+            docker build --file "containers/${stage}.Dockerfile" --label "org.opencontainers.image.revision=${REVISION}" --tag "${image}" .
+            docker run --rm --network none --read-only --cap-drop ALL --security-opt no-new-privileges --pids-limit 64 --memory 128m --entrypoint python "${image}" -m sessionscribe.sbom > "release/${stage}.sbom.json"
+            skopeo copy "docker-daemon:${image}" "oci-archive:release/${stage}.oci.tar:${reference}"
+            python3 scripts/release_image.py --archive "release/${stage}.oci.tar" --repository "${REPOSITORY}" --revision "${REVISION}" --stage "${stage}" --output "release/${stage}.json"
+          done
+      - name: Attest artifacts from the protected-main hosted build
+        id: provenance
+        uses: actions/attest-build-provenance@8beda2b7ed98355c0e97c0a63bec38ae472e66c4 # v4.2.2
+        with:
+          subject-path: release/*
+      - name: Publish signed public release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          REVISION: ${{ github.sha }}
+          BUNDLE_PATH: ${{ steps.provenance.outputs.bundle-path }}
+        run: |
+          cp -- "${BUNDLE_PATH}" release/provenance.sigstore.jsonl
+          gh release create "release-${REVISION}" release/* --target "${REVISION}" --prerelease --title "Verified SessionScribe ${REVISION}" --notes 'Immutable OCI images and dependency inventories from protected main. Voice remains gated pending authorized DAVE reception tests.'

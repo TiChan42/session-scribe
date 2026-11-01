@@ -1,0 +1,12 @@
+# Deny by default: private context, Git, credentials and runtime data never enter the context.
+**
+!pyproject.toml
+!src/
+!src/sessionscribe/
+!src/sessionscribe/*.py
+!requirements/
+!requirements/core.txt
+!requirements/recorder.txt
+!requirements/stt.txt
+!containers/
+!containers/*.Dockerfile

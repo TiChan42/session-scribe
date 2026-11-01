@@ -1,0 +1,104 @@
+{
+  "guild_id": "1000",
+  "command_channel_ids": [
+    "1002"
+  ],
+  "voice_channel_ids": [
+    "1003"
+  ],
+  "output_channel_id": "1004",
+  "grants": {
+    "start": {
+      "users": [
+        "1001"
+      ],
+      "roles": [
+        "1010"
+      ]
+    },
+    "pause": {
+      "users": [
+        "1001"
+      ],
+      "roles": [
+        "1010"
+      ]
+    },
+    "resume": {
+      "users": [
+        "1001"
+      ],
+      "roles": [
+        "1010"
+      ]
+    },
+    "stop": {
+      "users": [
+        "1001"
+      ],
+      "roles": [
+        "1010"
+      ]
+    },
+    "status": {
+      "users": [
+        "1001"
+      ],
+      "roles": [
+        "1010"
+      ]
+    },
+    "process": {
+      "users": [
+        "1001"
+      ],
+      "roles": [
+        "1010"
+      ]
+    },
+    "result": {
+      "users": [
+        "1001"
+      ],
+      "roles": [
+        "1010"
+      ]
+    },
+    "delete": {
+      "users": [
+        "1001"
+      ],
+      "roles": [
+        "1010"
+      ]
+    }
+  },
+  "recording_enabled": false,
+  "cloud_enabled": false,
+  "daily_cloud_calls": 4,
+  "daily_cloud_tokens": 100000,
+  "inference": {
+    "model": "OPERATOR_APPROVED_CLOUD_MODEL",
+    "context_tokens": 32768,
+    "output_tokens": 2048,
+    "prompt_version": "v1",
+    "split_mode": "reject"
+  },
+  "limits": {
+    "max_participants": 8,
+    "max_duration_ms": 14400000,
+    "segment_ms": 15000,
+    "max_audio_bytes": 1073741824,
+    "min_free_bytes": 536870912,
+    "max_chunks": 10000
+  },
+  "characters": {},
+  "campaign": null,
+  "mode": "meeting",
+  "default_protocol_channel_id": "1004",
+  "voice_protocol_channels": {},
+  "recorder_bot_ids": [
+    "5001",
+    "5002"
+  ]
+}

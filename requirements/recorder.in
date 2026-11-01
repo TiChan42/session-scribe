@@ -1,0 +1,4 @@
+-r core.in
+soundfile==0.13.1
+numpy==2.2.6
+py-cord==2.8.1

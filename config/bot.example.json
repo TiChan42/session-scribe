@@ -1,0 +1,14 @@
+{
+  "data_root": "/data",
+  "token_file": "/run/secrets/bot.env",
+  "revision": "development",
+  "inference": {
+    "model": "operator-approved-cloud-model",
+    "context_tokens": 8192,
+    "output_tokens": 2048
+  },
+  "max_guilds": 32,
+  "allowed_guild_ids": [],
+  "voice_reception": "disabled",
+  "cloud_processing": "disabled"
+}

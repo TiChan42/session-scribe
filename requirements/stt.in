@@ -1,0 +1,10 @@
+-r core.in
+faster-whisper==1.2.1
+ctranslate2==4.6.0
+av==15.1.0
+huggingface-hub==0.36.0
+tokenizers==0.22.1
+onnxruntime==1.23.2
+numpy==2.2.6
+tqdm==4.67.1
+setuptools==80.9.0
