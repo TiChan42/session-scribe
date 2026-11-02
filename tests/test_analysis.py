@@ -110,6 +110,9 @@ def test_mermaid_rejects_executable_or_unapproved_directives(transcript):
     t.result["justified_mermaid"] = 'click A "https://example.invalid"'
     with pytest.raises(ValueError, match="Mermaid"):
         validate_analysis(json.dumps(t.result), rig.session, [t.segment])
+    t.result["justified_mermaid"] = 'flowchart TD\nA["```"]'
+    with pytest.raises(ValueError, match="Mermaid"):
+        validate_analysis(json.dumps(t.result), rig.session, [t.segment])
 
 
 def test_reasoning_only_token_limit_is_not_a_protocol(transcript):
