@@ -66,6 +66,38 @@ def test_context_overflow_never_truncates_or_calls(transcript):
     assert rig.store.db.execute("SELECT COUNT(*) FROM budgets").fetchone()[0] == 0
 
 
+def test_short_segmented_session_fits_without_losing_evidence(transcript):
+    session = transcript.rig.store.session(transcript.rig.session.id)
+    session = session.model_copy(
+        update={
+            "inference": session.inference.model_copy(
+                update={"context_tokens": 8192, "output_tokens": 2048, "overhead_tokens": 512}
+            )
+        }
+    )
+    segments = [
+        transcript.segment.model_copy(
+            update={
+                "id": f"{index:032x}:0000",
+                "speaker_id": "1000000000000000001",
+                "start_ms": index * 3000,
+                "end_ms": index * 3000 + 2800,
+                "text": "Kein Kauf beschlossen. Kim prüft zwölf Geräte.",
+            }
+        )
+        for index in range(16)
+    ]
+    request, reserved = request_for(session, iter(segments))
+    assert reserved <= session.inference.context_tokens
+    payload = json.loads(request["messages"][1]["content"])
+    assert payload["session_id"] == session.id
+    assert len(payload["transcript"]) == len(segments)
+    for source, delivered in zip(segments, payload["transcript"], strict=True):
+        assert {**delivered, "session_id": payload["session_id"]} == source.model_dump(mode="json")
+    with pytest.raises(ValueError, match="cross-session"):
+        request_for(session, [segments[0].model_copy(update={"session_id": "f" * 32})])
+
+
 def test_budget_is_reserved_even_on_cloud_failure_and_retries_are_bounded(transcript):
     t, rig = transcript, transcript.rig
 
