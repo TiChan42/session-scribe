@@ -108,6 +108,7 @@ class FixtureRunner:
                             {
                                 "kind": "summary",
                                 "text": "Synthetische Probe: kein Beschluss.",
+                                "rationale": "Die Quelle verneint ausdrücklich einen Beschluss.",
                                 "sources": [s["id"] for s in data["transcript"]],
                                 "owner": None,
                                 "deadline": None,
@@ -115,6 +116,12 @@ class FixtureRunner:
                                 "category": "unclear" if data["mode"] == "dnd" else None,
                             }
                         ],
+                        "interpretation": {
+                            "summary": "Es wurde kein Beschluss gefasst.",
+                            "issues": [],
+                            "mermaid": None,
+                        },
+                        "justified_mermaid": None,
                     }
                     return {
                         "done": True,

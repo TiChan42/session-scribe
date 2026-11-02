@@ -23,6 +23,7 @@ def test_evaluator_uses_separate_state_and_never_needs_recorder_database(transcr
     state, output = tmp_path / "evaluator", tmp_path / "output"
     run_handoff(inputs.root, state, output, rig.config, t.cloud)
     assert (output / "result.md").exists()
+    assert (output / "summary.md").exists()
     assert (state / "state.sqlite3").exists()
     assert rig.store.db.execute("SELECT COUNT(*) FROM budgets").fetchone()[0] == 0
     assert len(t.cloud.calls) == 1

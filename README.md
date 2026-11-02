@@ -14,7 +14,7 @@ Modi heißen **Meeting** und **DnD**. Daten, Queues, Ergebnisziele und Inferenzb
 sind nach numerischer Guild-ID getrennt, auch wenn mehrere Server denselben Modus nutzen.
 
 Der lokale Kern funktioniert: Zustimmung → begrenzte FLAC-Aufnahme → dauerhafte
-Queue → Broker-Handoff → STT → validiertes LLM-Protokoll → Versand-Outbox. Beide Modi laufen in
+Queue → Broker-Handoff → STT → zwei validierte Markdown-Protokolle → Versand-Outbox. Beide Modi laufen in
 der synthetischen Demo durch. Echte lokale CPU/int8-STT mit künstlicher deutscher
 Sprache ist ebenfalls geprüft; Cloud und Supervisor sind dort Fixtures.
 
@@ -22,6 +22,13 @@ Fehlgeschlagene Auswertungen lassen sich über die berechtigte Controller-API mi
 einem neuen Analyseplan neu ansetzen. Aufnahme-Snapshot, Transkript und alte
 Fehlversuche bleiben erhalten. Explizite Denkstufen und getrennte Antwortlimits
 werden pro Auftrag gespeichert; abgeschnittene Modellantworten bleiben unveröffentlicht.
+
+Jede Auswertung erzeugt zwei Dateien: `protokoll-begruendet.md` ordnet Aussagen mit
+Begründung und Quellen ein; `protokoll-interpretiert.md` fasst den Kontext zusammen und
+führt problematische oder unklare Stellen samt Quellen auf. Geeignete Mermaid-Flussdiagramme
+können in beiden Dateien erscheinen. Modellgenerierte Interpretationen und Diagramme werden
+begrenzt und auf Quellen sowie eine enge Mermaid-Syntax geprüft. Beide Dateien werden gemeinsam
+im eingestellten Protokollkanal veröffentlicht und gemeinsam über den Ergebnisabruf bereitgestellt.
 
 **Betriebsfreigabe:** Guild-Konfiguration und Commands sind unabhängig vom
 Empfangstest nutzbar. Der reguläre Aufnahme-Gate bleibt bis zum geprüften

@@ -431,7 +431,13 @@ class Store:
 
     def artifact(self, sid: str, name: str) -> bytes:
         kind = "stt" if name == "transcript.json" else "analysis"
-        if name not in ("transcript.json", "analysis.json", "result.md", "inference.json"):
+        if name not in (
+            "transcript.json",
+            "analysis.json",
+            "result.md",
+            "summary.md",
+            "inference.json",
+        ):
             raise ValueError("unknown artifact")
         result = self.job_result(sid, kind)
         if result is None:

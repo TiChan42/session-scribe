@@ -136,9 +136,11 @@ Evaluator-Zustand ist je Guild und logischem Job getrennt; Retries desselben Job
 verwenden denselben Zustand. Ein Planwechsel verändert keinen laufenden Auftrag.
 
 Kein Tool-Feld, keine Befehlsausführung, keine dynamischen Modell-/HTTP-Routen.
-JSON-Schema, Mandant, Session, Quellen, explizite Zuständigkeits-/Fristbelege
-und Charakterzuordnung werden lokal geprüft. Semantische Fehlinterpretationen
-bleiben möglich. Mehrere Markdown-Ansichten benötigen keine zusätzlichen Calls.
+JSON-Schema, Mandant, Session, Quellen, explizite Zuständigkeits-/Fristbelege,
+Kontextstellen und Charakterzuordnung werden lokal geprüft. Jede Analyse liefert
+ein begründetes Protokoll und eine getrennte interpretierte Zusammenfassung mit
+belegten Problemstellen. Optionales Mermaid wird nur in begrenzter Flowchart-Syntax
+angenommen. Semantische Fehlinterpretationen bleiben möglich.
 
 Budget wird vor dem Request atomar reserviert und auch bei unklarer Antwort
 verbraucht. Der lokale Grenzwert ist zusätzliche Absicherung; der getrennt
@@ -147,7 +149,7 @@ berechtigte Gateway muss den eigentlichen Anbieterzugang begrenzen.
 Publikation hat durable sending/sent/uncertain-Zustände. Nach unklarer Quittung
 wird nicht automatisch erneut gesendet; Operator-Abgleich verhindert Duplikate.
 Der Publisher-Vertrag verwendet bis 1900 Zeichen Text, darüber begrenzte
-Markdown-Anhänge (maximal 2 MB). `DiscordDelivery` setzt den Versandvertrag mit
+beide Markdown-Dateien gemeinsam als Anhänge (zusammen maximal 2 MB). `DiscordDelivery` setzt den Versandvertrag mit
 Guild-/Kanal-/Rechteprüfung und ausgeschalteten Mentions um. Der Steuerungsclient pollt die Outbox im Hintergrund auf seinem Policy-Thread.
 Ein echter Zustelltest in einer autorisierten Testguild steht aus.
 

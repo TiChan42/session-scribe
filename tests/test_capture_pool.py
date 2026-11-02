@@ -245,6 +245,10 @@ def test_capture_continues_while_another_session_runs_through_background_queue(
     sent = []
 
     class Delivery:
+        def send_files(self, *_args, **_kwargs):
+            sent.append("10004")
+            return "synthetic-publication"
+
         def send(self, channel_id, content, *, allowed_mentions):
             sent.append(channel_id)
             return "synthetic-publication"

@@ -214,6 +214,31 @@ class DiscordDelivery:
         message = await channel.send(content=content, **kwargs)
         return str(message.id)
 
+    async def _send_files(self, channel_id, files):
+        import discord
+
+        guild = self.client.get_guild(int(self.guild_id))
+        channel = guild.get_channel(int(channel_id)) if guild else None
+        if not isinstance(channel, discord.TextChannel) or channel.guild.id != int(self.guild_id):
+            raise Denied("protocol destination is not in the configured guild")
+        if (
+            not channel.permissions_for(guild.me).view_channel
+            or not channel.permissions_for(guild.me).send_messages
+            or not channel.permissions_for(guild.me).attach_files
+        ):
+            raise Denied("protocol destination permissions denied")
+        expected = {"protokoll-begruendet.md", "protokoll-interpretiert.md"}
+        if set(files) != expected or sum(map(len, files.values())) > 2_000_000:
+            raise Denied("protocol attachments denied")
+        uploads = [discord.File(io.BytesIO(files[name]), filename=name) for name in sorted(files)]
+        message = await channel.send(
+            content="SessionScribe: zwei geprüfte Protokollfassungen.",
+            files=uploads,
+            allowed_mentions=discord.AllowedMentions.none(),
+            suppress_embeds=True,
+        )
+        return str(message.id)
+
     def _submit(self, coroutine):
         with contextlib.suppress(RuntimeError):
             if asyncio.get_running_loop() is self.loop:
@@ -234,6 +259,11 @@ class DiscordDelivery:
         self, channel_id: str, filename: str, data: bytes, *, allowed_mentions: dict
     ) -> str:
         return self._submit(self._send(channel_id, filename=filename, data=data))
+
+    def send_files(
+        self, channel_id: str, files: dict[str, bytes], *, allowed_mentions: dict
+    ) -> str:
+        return self._submit(self._send_files(channel_id, files))
 
 
 def register_commands(client, invoke):
@@ -425,6 +455,22 @@ class ControlBot:
                     raise ValueError("result attachment exceeds bound")
                 await ctx.respond(
                     file=discord.File(io.BytesIO(result), filename="result.md"),
+                    ephemeral=True,
+                    allowed_mentions=discord.AllowedMentions.none(),
+                )
+                return
+            if (
+                isinstance(result, dict)
+                and set(result) == {"protokoll-begruendet.md", "protokoll-interpretiert.md"}
+                and all(isinstance(value, bytes) for value in result.values())
+            ):
+                if sum(map(len, result.values())) > 2_000_000:
+                    raise ValueError("result attachments exceed bound")
+                await ctx.respond(
+                    files=[
+                        discord.File(io.BytesIO(data), filename=filename)
+                        for filename, data in sorted(result.items())
+                    ],
                     ephemeral=True,
                     allowed_mentions=discord.AllowedMentions.none(),
                 )

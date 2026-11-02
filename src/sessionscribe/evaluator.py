@@ -49,7 +49,7 @@ def run_handoff(
             max_calls=config.daily_cloud_calls,
             max_tokens=config.daily_cloud_tokens,
         )
-        for name in ("analysis.json", "result.md", "inference.json"):
+        for name in ("analysis.json", "result.md", "summary.md", "inference.json"):
             output.atomic(name, store.files.read(f"sessions/{sid}/{name}"))
         completion = Completion(
             schema_version=1,
@@ -57,7 +57,7 @@ def run_handoff(
             binding=handoff.binding,
             outputs={
                 name: digest(output.read(name))
-                for name in ("analysis.json", "result.md", "inference.json")
+                for name in ("analysis.json", "result.md", "summary.md", "inference.json")
             },
         )
         output.json("complete.json", completion.model_dump(mode="json"))

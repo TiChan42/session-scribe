@@ -27,7 +27,9 @@ def test_one_call_validated_result_and_immutable_raw_transcript(transcript):
     evaluate(rig.store, rig.session.id, t.cloud, enabled=True)
     assert len(t.cloud.calls) == 1
     assert rig.store.files.read(f"sessions/{rig.session.id}/transcript.json") == before
-    assert b"Quellen" in rig.control.result(rig.actor, rig.session.id)
+    result_files = rig.control.result(rig.actor, rig.session.id)
+    assert b"Quellen" in result_files["protokoll-begruendet.md"]
+    assert b"Problematische" in result_files["protokoll-interpretiert.md"]
 
 
 @pytest.mark.parametrize(
@@ -80,6 +82,36 @@ def test_thinking_is_explicit_and_legacy_snapshots_keep_their_shape(transcript):
     assert session.inference.thinking is None
 
 
+def test_context_interpretations_and_mermaid_are_bounded_and_source_bound(transcript):
+    t, rig = transcript, transcript.rig
+    t.result["interpretation"] = {
+        "summary": "Ein Vorschlag wurde gemacht, aber nicht beschlossen.",
+        "issues": [
+            {
+                "text": "Die Aussage lässt offen, ob die Aufgabe beschlossen wurde.",
+                "sources": [t.segment.id],
+            }
+        ],
+        "mermaid": 'flowchart TD\nA["Vorschlag"]\nB["Kein Beschluss"]\nA --> B',
+    }
+    result = validate_analysis(json.dumps(t.result), rig.session, [t.segment])
+    assert result.interpretation.issues[0].sources == [t.segment.id]
+    from sessionscribe.render import render_interpretation
+
+    rendered = render_interpretation(result)
+    assert "```mermaid" in rendered and "Quellen:" in rendered
+    t.result["interpretation"]["issues"][0]["sources"] = ["unknown"]
+    with pytest.raises(ValueError, match="interpretation"):
+        validate_analysis(json.dumps(t.result), rig.session, [t.segment])
+
+
+def test_mermaid_rejects_executable_or_unapproved_directives(transcript):
+    t, rig = transcript, transcript.rig
+    t.result["justified_mermaid"] = 'click A "https://example.invalid"'
+    with pytest.raises(ValueError, match="Mermaid"):
+        validate_analysis(json.dumps(t.result), rig.session, [t.segment])
+
+
 def test_reasoning_only_token_limit_is_not_a_protocol(transcript):
     rig = transcript.rig
     before = rig.store.files.read(f"sessions/{rig.session.id}/transcript.json")
@@ -107,7 +139,7 @@ def test_short_segmented_session_fits_without_losing_evidence(transcript):
     session = session.model_copy(
         update={
             "inference": session.inference.model_copy(
-                update={"context_tokens": 8192, "output_tokens": 2048, "overhead_tokens": 512}
+                update={"context_tokens": 16384, "output_tokens": 2048, "overhead_tokens": 512}
             )
         }
     )
@@ -181,6 +213,10 @@ def test_prompt_injection_is_data_and_mentions_are_disabled(transcript, tmp_path
     evaluate(rig.store, rig.session.id, t.cloud, enabled=True)
 
     class Delivery:
+        def send_files(self, channel_id, files, *, allowed_mentions):
+            assert channel_id == rig.config.output_channel_id and len(files) == 2
+            return "synthetic-message"
+
         def send(self, channel_id, content, *, allowed_mentions):
             assert channel_id == rig.config.output_channel_id
             assert "@everyone" not in content and "<@1001>" not in content
@@ -200,6 +236,10 @@ def test_ambiguous_publication_is_not_automatically_repeated(transcript):
 
     class Ambiguous:
         calls = 0
+
+        def send_files(self, *_args, **_kwargs):
+            self.calls += 1
+            raise OSError("synthetic lost receipt")
 
         def send(self, *_args, **_kwargs):
             self.calls += 1
