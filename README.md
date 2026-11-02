@@ -6,7 +6,7 @@ vom Betreiber freigegebenen Testguild. Deployment und Reconnect starten keine
 Aufnahme. Der Command ist an eine bestimmte Person und feste Kanäle gebunden;
 Netzwerkfreigaben erhalten kurze Ablaufzeiten. Der reguläre Bot
 behält seine Empfangssperre bis zur vollständigen Qualifikation; Details stehen
-in [docs/testing.md](docs/testing.md).
+in [docs/TESTING.md](docs/TESTING.md).
 
 Ein gemeinsamer Steuerungsbot mit Konfiguration je Discord-Server und ein Pool
 zusätzlicher Aufnahme-Bots für parallele Sprachkanäle derselben Guild. Die beiden
@@ -17,6 +17,11 @@ Der lokale Kern funktioniert: Zustimmung → begrenzte FLAC-Aufnahme → dauerha
 Queue → Broker-Handoff → STT → validiertes LLM-Protokoll → Versand-Outbox. Beide Modi laufen in
 der synthetischen Demo durch. Echte lokale CPU/int8-STT mit künstlicher deutscher
 Sprache ist ebenfalls geprüft; Cloud und Supervisor sind dort Fixtures.
+
+Fehlgeschlagene Auswertungen lassen sich über die berechtigte Controller-API mit
+einem neuen Analyseplan neu ansetzen. Aufnahme-Snapshot, Transkript und alte
+Fehlversuche bleiben erhalten. Explizite Denkstufen und getrennte Antwortlimits
+werden pro Auftrag gespeichert; abgeschnittene Modellantworten bleiben unveröffentlicht.
 
 **Betriebsfreigabe:** Guild-Konfiguration und Commands sind unabhängig vom
 Empfangstest nutzbar. Der reguläre Aufnahme-Gate bleibt bis zum geprüften

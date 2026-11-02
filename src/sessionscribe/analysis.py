@@ -32,7 +32,7 @@ class Transport(Protocol):
 class Gateway:
     """Only /api/chat on an explicitly provisioned inference gateway. No redirects or tools."""
 
-    def __init__(self, url: str, token: str, *, timeout: int = 120):
+    def __init__(self, url: str, token: str, *, timeout: int = 180):
         parsed = urllib.parse.urlsplit(url)
         if (
             parsed.scheme != "https"
@@ -100,12 +100,15 @@ def request_for(session: Session, segments) -> tuple[dict, int]:
         raise ContextOverflow(
             "full transcript exceeds reviewed context; no truncation or auto-split"
         )
-    return {
+    request = {
         "model": settings.model,
         "messages": messages,
         "stream": False,
         "options": {"temperature": settings.temperature, "num_predict": settings.output_tokens},
-    }, reserved
+    }
+    if settings.thinking is not None:
+        request["think"] = settings.thinking
+    return request, reserved
 
 
 def validate_analysis(raw: str, session: Session, segments) -> Analysis:
@@ -220,6 +223,23 @@ def _evaluate(
     if not isinstance(raw, str):
         raise ValueError("missing model JSON")
     result = validate_analysis(raw, s, segments)
+    usage = {}
+    for name in ("prompt_eval_count", "eval_count"):
+        count = response.get(name)
+        if type(count) is int and 0 <= count <= 10_000_000:
+            usage[name] = count
+    thinking = message.get("thinking")
+    store.files.json(
+        f"sessions/{sid}/inference.json",
+        {
+            "settings": s.inference.model_dump(mode="json"),
+            "reserved_tokens": reservation,
+            "status": "validated",
+            "done_reason": "stop",
+            "thinking_characters": len(thinking) if isinstance(thinking, str) else 0,
+            **usage,
+        },
+    )
     store.files.atomic(f"sessions/{sid}/analysis.json", result.model_dump_json().encode())
     from .render import render_analysis
 

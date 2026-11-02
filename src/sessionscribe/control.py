@@ -4,7 +4,7 @@ import contextlib
 import uuid
 from collections.abc import Callable
 
-from .models import Actor, Config, Session, SessionState
+from .models import Actor, Config, InferenceSettings, Session, SessionState
 from .store import Conflict, Store
 
 
@@ -224,6 +224,12 @@ class Controller:
         self.owned(actor, sid, "process")
         return self.store.enqueue(sid, "stt")
 
+    def restart_analysis(self, actor: Actor, sid: str, settings: InferenceSettings) -> str:
+        self.owned(actor, sid, "process")
+        if not self.config.cloud_enabled:
+            raise Denied("cloud processing disabled")
+        return self.store.restart_analysis(sid, settings)
+
     def result(self, actor: Actor, sid: str) -> bytes:
         self.owned(actor, sid, "result")
         return self.store.artifact(sid, "result.md")
@@ -290,6 +296,12 @@ class Controller:
                         "SELECT id FROM jobs WHERE session_id=?", (sid,)
                     )
                 }
+                job_ids.update(
+                    row[0]
+                    for row in self.store.db.execute(
+                        "SELECT id FROM retired_jobs WHERE session_id=?", (sid,)
+                    )
+                )
                 self.store.db.execute("UPDATE jobs SET state='dead' WHERE session_id=?", (sid,))
                 self.store.db.execute("DELETE FROM deliveries WHERE session_id=?", (sid,))
                 self.store.save_session(s, s.model_copy(update={"state": SessionState.DELETED}))

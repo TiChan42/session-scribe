@@ -14,7 +14,7 @@ from pathlib import Path
 
 
 class UnixGateway:
-    def __init__(self, path: Path, token: str, *, timeout: int = 120):
+    def __init__(self, path: Path, token: str, *, timeout: int = 180):
         if (
             not path.is_absolute()
             or ".." in path.parts

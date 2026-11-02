@@ -51,6 +51,7 @@ class Prepared:
     chunks: tuple[AudioChunk, ...]
     input_path: Path
     output_path: Path
+    source_session: Session | None = None
 
 
 class Runner(Protocol):
@@ -119,7 +120,8 @@ class Broker:
         self.store.assert_job(job)
         if job["kind"] != self.workspace.phase:
             raise ValueError("wrong broker phase")
-        session = self.store.session(job["session_id"])
+        source_session = self.store.session(job["session_id"])
+        session = self.store.analysis_session(job) if job["kind"] == "analysis" else source_session
         if session.state not in (SessionState.STOPPED, SessionState.INTERRUPTED):
             raise Conflict("session is not finalized")
         chunks: tuple[AudioChunk, ...] = ()
@@ -213,7 +215,7 @@ class Broker:
             inputs.json("handoff.json", handoff.model_dump(mode="json"))
         inputs.seal()
         self.store.assert_job(job)
-        return Prepared(binding, session, chunks, input_path, output_path)
+        return Prepared(binding, session, chunks, input_path, output_path, source_session)
 
     @staticmethod
     def _segments(raw: bytes, sid: str) -> list[Segment]:
@@ -256,8 +258,13 @@ class Broker:
 
     def promote(self, job: dict, prepared: Prepared):
         self.store.assert_job(job)
-        if self.store.session(prepared.session.id) != prepared.session:
+        if self.store.session(prepared.session.id) != (prepared.source_session or prepared.session):
             raise Conflict("session changed during processing")
+        if (
+            prepared.binding.phase == "analysis"
+            and self.store.analysis_session(job) != prepared.session
+        ):
+            raise Conflict("analysis plan changed during processing")
         outputs = SafeFiles(prepared.output_path)
         completion = Completion.model_validate_json(outputs.read("complete.json", 8192))
         if completion.binding != prepared.binding or completion.session_id != prepared.session.id:

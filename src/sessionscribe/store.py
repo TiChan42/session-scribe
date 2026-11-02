@@ -14,7 +14,7 @@ from typing import Literal
 from pydantic import TypeAdapter
 
 from .files import SafeFiles
-from .models import Session, SessionState, Tenant
+from .models import InferenceSettings, Session, SessionState, Tenant
 
 
 class Conflict(RuntimeError):
@@ -37,11 +37,43 @@ class Store:
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=FULL")
         self.db.execute("PRAGMA foreign_keys=ON")
+        try:
+            with self.files.lock("locks/store-init.lock") as acquired:
+                if not acquired:
+                    raise Conflict("store initialization in progress")
+                self._initialize()
+        except BaseException:
+            self.db.close()
+            raise
+
+    def _initialize(self):
+        tenant = self.tenant
         version = self.db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, 2, 3, 4):
+        if version not in (0, 1, 2, 3, 4, 5):
             self.db.close()
             raise ValueError("unsupported database schema")
         try:
+            self.migration_backup = None
+            if 0 < version < 5:
+                identity = self.db.execute("SELECT tenant FROM identity").fetchone()
+                if identity is None or identity[0] != tenant:
+                    raise ValueError("cross-tenant migration denied")
+                for saved in self.db.execute("SELECT body FROM sessions"):
+                    if Session.model_validate_json(saved[0]).tenant != tenant:
+                        raise ValueError("legacy store requires explicit guild migration")
+                import shutil
+
+                size = self.db.execute("PRAGMA page_count").fetchone()[0]
+                size *= self.db.execute("PRAGMA page_size").fetchone()[0]
+                if shutil.disk_usage(self.files.root).free < size * 2 + 1_048_576:
+                    raise OSError("migration backup storage reserve")
+                directory = self.files.root / "migration-backups"
+                if directory.is_symlink():
+                    raise ValueError("symlink migration backup directory")
+                directory.mkdir(mode=0o700, exist_ok=True)
+                target = directory / f"schema-{version}-before-5-{uuid.uuid4().hex}.sqlite3"
+                self.backup(target)
+                self.migration_backup = target
             with self.transaction():
                 schema = """
                     CREATE TABLE IF NOT EXISTS identity (tenant TEXT PRIMARY KEY);
@@ -80,6 +112,13 @@ class Store:
                     CREATE TABLE IF NOT EXISTS job_results (
                         job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
                         token TEXT NOT NULL, manifest TEXT NOT NULL);
+                    CREATE TABLE IF NOT EXISTS analysis_plans (
+                        job_id TEXT PRIMARY KEY REFERENCES jobs(id) ON DELETE CASCADE,
+                        source_session_sha256 TEXT NOT NULL, inference TEXT NOT NULL);
+                    CREATE TABLE IF NOT EXISTS retired_jobs (
+                        id TEXT PRIMARY KEY,
+                        session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+                        body TEXT NOT NULL, retired_at REAL NOT NULL);
                 """
                 for statement in schema.split(";"):
                     if statement.strip():
@@ -91,7 +130,7 @@ class Store:
                 for saved in self.db.execute("SELECT body FROM sessions"):
                     if Session.model_validate_json(saved[0]).tenant != tenant:
                         raise ValueError("legacy store requires explicit guild migration")
-                self.db.execute("PRAGMA user_version=4")
+                self.db.execute("PRAGMA user_version=5")
         except BaseException:
             self.db.close()
             raise
@@ -174,6 +213,99 @@ class Store:
         return self.db.execute(
             "SELECT id FROM jobs WHERE session_id=? AND kind=?", (sid, kind)
         ).fetchone()[0]
+
+    def restart_analysis(self, sid: str, settings: InferenceSettings) -> str:
+        """Create a fresh logical job; preserve failed history and the recording snapshot."""
+        from .handoff import digest, encoded, session_data
+
+        settings = InferenceSettings.model_validate_json(settings.model_dump_json())
+        with self.files.lock(f"locks/{sid}.lock") as acquired:
+            if not acquired:
+                raise Conflict("session operation already running")
+            with self.transaction():
+                session = self.session(sid)
+                if session.state not in (SessionState.STOPPED, SessionState.INTERRUPTED):
+                    raise Conflict("session is not finalized")
+                if settings.model != session.inference.model:
+                    raise ValueError("recording model cannot change")
+                if not session.participants <= session.cloud_consent:
+                    raise PermissionError("cloud consent required")
+                if self.job_result(sid, "stt") is None:
+                    raise Conflict("committed transcript required")
+                if (
+                    self.db.execute(
+                        "SELECT 1 FROM protocol_outbox WHERE session_id=?", (sid,)
+                    ).fetchone()
+                    or self.db.execute(
+                        "SELECT 1 FROM deliveries WHERE session_id=?", (sid,)
+                    ).fetchone()
+                ):
+                    raise Conflict("existing protocol requires reconciliation")
+                row = self.db.execute(
+                    "SELECT * FROM jobs WHERE session_id=? AND kind='analysis'", (sid,)
+                ).fetchone()
+                if (
+                    row is None
+                    or row["state"] != "dead"
+                    or row["token"] is not None
+                    or row["lease_until"] is not None
+                ):
+                    raise Conflict("only a failed analysis can be restarted")
+                if self.db.execute(
+                    "SELECT 1 FROM job_results WHERE job_id=?", (row["id"],)
+                ).fetchone():
+                    raise Conflict("committed analysis cannot be replaced")
+                if (
+                    self.db.execute(
+                        "SELECT count(*) FROM retired_jobs WHERE session_id=?", (sid,)
+                    ).fetchone()[0]
+                    >= 8
+                ):
+                    raise Conflict("analysis restart limit reached")
+                previous_plan = self.db.execute(
+                    "SELECT * FROM analysis_plans WHERE job_id=?", (row["id"],)
+                ).fetchone()
+                self.db.execute(
+                    "INSERT INTO retired_jobs VALUES (?,?,?,?)",
+                    (
+                        row["id"],
+                        sid,
+                        json.dumps(
+                            {
+                                "job": dict(row),
+                                "plan": dict(previous_plan) if previous_plan else None,
+                            }
+                        ),
+                        time.time(),
+                    ),
+                )
+                self.db.execute("DELETE FROM jobs WHERE id=?", (row["id"],))
+                jid = uuid.uuid4().hex
+                self.db.execute(
+                    "INSERT INTO jobs(id,session_id,kind) VALUES (?,?,'analysis')", (jid, sid)
+                )
+                self.db.execute(
+                    "INSERT INTO analysis_plans VALUES (?,?,?)",
+                    (jid, digest(encoded(session_data(session))), settings.model_dump_json()),
+                )
+                return jid
+
+    def analysis_session(self, job: dict) -> Session:
+        from .handoff import digest, encoded, session_data
+
+        session = self.session(job["session_id"])
+        row = self.db.execute(
+            "SELECT source_session_sha256,inference FROM analysis_plans WHERE job_id=?",
+            (job["id"],),
+        ).fetchone()
+        if row is None:
+            return session
+        if job["kind"] != "analysis" or digest(encoded(session_data(session))) != row[0]:
+            raise ValueError("analysis source snapshot changed")
+        settings = InferenceSettings.model_validate_json(row[1])
+        if settings.model != session.inference.model:
+            raise ValueError("analysis plan model mismatch")
+        return session.model_copy(update={"inference": settings})
 
     def claim(
         self,

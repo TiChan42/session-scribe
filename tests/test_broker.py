@@ -73,7 +73,11 @@ class SyntheticRunner:
                     }
 
             evaluate_handoff(
-                prepared.input_path, self.state, prepared.output_path, self.config, Cloud()
+                prepared.input_path,
+                self.state / prepared.binding.job_id,
+                prepared.output_path,
+                self.config,
+                Cloud(),
             )
         else:
             all_segments = []
@@ -355,7 +359,10 @@ def test_schema_one_migrates_with_jobs_preserved_and_result_fks_cascade(rig, tmp
         db.execute("PRAGMA user_version=1")
     restored = Store(backup.parent, "1000")
     try:
-        assert restored.db.execute("PRAGMA user_version").fetchone()[0] == 4
+        assert restored.db.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert restored.migration_backup is not None
+        with sqlite3.connect(restored.migration_backup) as before:
+            assert before.execute("PRAGMA user_version").fetchone()[0] == 1
         assert restored.queue_status()[0]["state"] == "pending"
         assert restored.session(rig.session.id).id == rig.session.id
     finally:
@@ -440,3 +447,104 @@ def test_result_ledger_refuses_a_forged_job_identity(rig, tmp_path):
     rig.store.db.execute("UPDATE job_results SET manifest=?", (json.dumps(result),))
     with pytest.raises(ValueError, match="mismatched"):
         load_transcript(rig.store, rig.session.id)
+
+
+def failed_analysis(rig, tmp_path):
+    queued(rig)
+    assert broker(rig, tmp_path).once()
+    for index in range(3):
+        now = 10_000_000_000.0 + index * 1000
+        job = rig.store.claim("analysis", now=now)
+        assert job is not None
+        rig.store.finish(job, error="synthetic_incomplete_response", now=now + 1)
+    return next(j for j in rig.store.queue_status() if j["kind"] == "analysis")
+
+
+def test_new_analysis_job_preserves_recording_failed_history_and_frozen_plan(rig, tmp_path):
+    failed = failed_analysis(rig, tmp_path)
+    source = rig.store.session(rig.session.id)
+    original = source.model_dump_json()
+    settings = source.inference.model_copy(
+        update={"thinking": "low", "context_tokens": 16384, "output_tokens": 4096}
+    )
+    with pytest.raises(PermissionError):
+        rig.control.restart_analysis(rig.other, source.id, settings)
+    with pytest.raises(ValueError, match="model"):
+        rig.control.restart_analysis(
+            rig.actor, source.id, settings.model_copy(update={"model": "different-fixture"})
+        )
+    assert rig.store.db.execute("SELECT count(*) FROM retired_jobs").fetchone()[0] == 0
+    new_id = rig.control.restart_analysis(rig.actor, source.id, settings)
+    assert new_id != failed["id"]
+    assert rig.store.session(source.id).model_dump_json() == original
+    retired = json.loads(rig.store.db.execute("SELECT body FROM retired_jobs").fetchone()[0])
+    assert retired["job"]["id"] == failed["id"] and retired["job"]["attempts"] == 3
+    assert retired["job"]["state"] == "dead"
+    new_job = next(j for j in rig.store.queue_status() if j["kind"] == "analysis")
+    assert new_job["id"] == new_id and new_job["attempts"] == 0
+    evaluation = broker(rig, tmp_path, "analysis")
+    assert evaluation.once()
+    assert evaluation.runner.runs[0].session.inference == settings
+    assert evaluation.runner.runs[0].source_session == source
+    metadata = json.loads(rig.store.artifact(source.id, "inference.json"))
+    assert metadata["settings"]["thinking"] == "low"
+    assert rig.store.job_result(source.id, "analysis")["binding"]["job_id"] == new_id
+    assert rig.store.session(source.id).model_dump_json() == original
+    with pytest.raises(Conflict):
+        rig.control.restart_analysis(rig.actor, source.id, settings)
+
+
+def test_analysis_plan_source_change_and_retired_result_cleanup(rig, tmp_path):
+    failed = failed_analysis(rig, tmp_path)
+    source = rig.store.session(rig.session.id)
+    settings = source.inference.model_copy(update={"thinking": "low"})
+    rig.control.restart_analysis(rig.actor, source.id, settings)
+    rig.store.save_session(source, source.model_copy(update={"cloud_consent": frozenset()}))
+    evaluation = broker(rig, tmp_path, "analysis")
+    assert evaluation.once()
+    assert not evaluation.runner.runs
+    assert rig.store.job_result(source.id, "analysis") is None
+    old_result = f"results/{failed['id']}-{'a' * 32}"
+    rig.store.files.atomic(old_result + "/uncommitted.json", b"{}")
+    rig.control.delete(rig.actor, source.id)
+    assert not (rig.store.files.root / old_result).exists()
+    for table in ("analysis_plans", "retired_jobs"):
+        assert rig.store.db.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == 0
+
+
+def test_analysis_restart_transaction_cannot_lose_failed_job(rig, tmp_path):
+    failed = failed_analysis(rig, tmp_path)
+    source = rig.store.session(rig.session.id)
+    rig.store.db.execute(
+        "CREATE TRIGGER reject_new_plan BEFORE INSERT ON analysis_plans "
+        "BEGIN SELECT RAISE(ABORT, 'synthetic plan storage failure'); END"
+    )
+    with pytest.raises(sqlite3.IntegrityError):
+        rig.control.restart_analysis(
+            rig.actor, source.id, source.inference.model_copy(update={"thinking": "low"})
+        )
+    current = next(j for j in rig.store.queue_status() if j["kind"] == "analysis")
+    assert current == failed
+    assert rig.store.db.execute("SELECT count(*) FROM retired_jobs").fetchone()[0] == 0
+    assert rig.store.db.execute("SELECT count(*) FROM analysis_plans").fetchone()[0] == 0
+
+
+def test_inflight_analysis_plan_change_cannot_commit(rig, tmp_path):
+    failed_analysis(rig, tmp_path)
+    source = rig.store.session(rig.session.id)
+    low = source.inference.model_copy(update={"thinking": "low"})
+    new_id = rig.control.restart_analysis(rig.actor, source.id, low)
+    evaluation = broker(rig, tmp_path, "analysis")
+
+    def change_plan(_prepared, _outputs):
+        rig.store.db.execute(
+            "UPDATE analysis_plans SET inference=? WHERE job_id=?",
+            (low.model_copy(update={"thinking": "high"}).model_dump_json(), new_id),
+        )
+
+    evaluation.runner.transform = change_plan
+    with pytest.raises(Conflict, match="plan changed"):
+        evaluation.once()
+    assert rig.store.job_result(source.id, "analysis") is None
+    assert not rig.store.protocol_queue()
+    assert rig.store.session(source.id) == source

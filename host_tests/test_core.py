@@ -149,3 +149,29 @@ def test_configuration_fingerprint_survives_different_process_hash_seeds():
         env={"PYTHONHASHSEED": "7", "PYTHONPATH": str(Path("src").absolute())},
     )
     assert result.stdout.strip() == digest(encoded(config_data(config)))
+
+
+def test_schema_four_upgrade_keeps_a_consistent_private_backup(tmp_path):
+    root = tmp_path / "guild"
+    original = Store(root, "1000")
+    original.add_session(session())
+    before = original.db.execute("SELECT body FROM sessions").fetchone()[0]
+    original.db.execute("DROP TABLE analysis_plans")
+    original.db.execute("DROP TABLE retired_jobs")
+    original.db.execute("PRAGMA user_version=4")
+    original.close()
+    upgraded = Store(root, "1000")
+    try:
+        assert upgraded.db.execute("PRAGMA user_version").fetchone()[0] == 5
+        assert upgraded.db.execute("SELECT body FROM sessions").fetchone()[0] == before
+        backup_path = upgraded.migration_backup
+        assert backup_path is not None and backup_path.stat().st_mode & 0o777 == 0o600
+        backup = sqlite3.connect(backup_path)
+        try:
+            assert backup.execute("PRAGMA integrity_check").fetchone() == ("ok",)
+            assert backup.execute("PRAGMA user_version").fetchone()[0] == 4
+            assert backup.execute("SELECT body FROM sessions").fetchone()[0] == before
+        finally:
+            backup.close()
+    finally:
+        upgraded.close()
