@@ -69,18 +69,28 @@ class Gateway:
 
 def request_for(session: Session, segments) -> tuple[dict, int]:
     settings = session.inference
+    transcript = []
+    for segment in segments:
+        if segment.session_id != session.id:
+            raise ValueError("cross-session inference segment")
+        # The enclosing session ID binds every entry; repeating it consumes context
+        # without adding evidence. Keep all source IDs, speakers, timing and text.
+        transcript.append(segment.model_dump(mode="json", exclude={"session_id"}))
     payload = {
         "tenant": session.tenant,
         "mode": session.mode,
         "session_id": session.id,
         "characters": session.characters,
         "campaign": session.campaign,
-        "transcript": [s.model_dump(mode="json") for s in segments],
+        "transcript": transcript,
         "response_schema": Analysis.model_json_schema(),
     }
     messages = [
         {"role": "system", "content": SYSTEM},
-        {"role": "user", "content": json.dumps(payload, ensure_ascii=False)},
+        {
+            "role": "user",
+            "content": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),
+        },
     ]
     # Conservative UTF-8 byte upper bound for reviewed byte-fallback tokenizers.
     # Unknown/tokenizers without that contract must not be approved for this gateway.

@@ -119,6 +119,9 @@ UTF-8-Bytes plus Overhead liefern eine konservative Eingabeobergrenze für
 explizit geprüfte Byte-Fallback-Tokenizer. Modell-/Gateway-Limits müssen separat
 bestätigt werden. Bei Überlauf erfolgt keine Kürzung. Aufteilungsmodus ist
 noch nicht implementiert; Konfiguration erlaubt bewusst nur `reject`.
+Der Request verwendet kompaktes JSON und bindet alle Segmente an die einmal
+genannte Session-ID. Quell-IDs, Sprecher, Zeitangaben, Lücken und Text bleiben
+vollständig erhalten; fremde Session-IDs werden vor der Serialisierung abgewiesen.
 
 Kein Tool-Feld, keine Befehlsausführung, keine dynamischen Modell-/HTTP-Routen.
 JSON-Schema, Mandant, Session, Quellen, explizite Zuständigkeits-/Fristbelege
