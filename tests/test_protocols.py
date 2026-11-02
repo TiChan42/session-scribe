@@ -51,9 +51,21 @@ def pipeline(rig, tmp_path, *, long=False, cloud_error=False):
             result = json.loads(output.read("analysis.json"))
             result["findings"][0]["text"] = "Synthetischer Entwurf mit Quellen. " * 100
             output.json("analysis.json", result)
-            output.atomic("result.md", render_analysis(Analysis.model_validate(result)).encode())
+            from sessionscribe.models import Segment
+
+            raw_segments = json.loads((prepared.input_path / "transcript.json").read_bytes())
+            segments = [Segment.model_validate(item) for item in raw_segments]
             output.atomic(
-                "summary.md", render_interpretation(Analysis.model_validate(result)).encode()
+                "result.md",
+                render_analysis(
+                    Analysis.model_validate(result), prepared.session.speaker_aliases, segments
+                ).encode(),
+            )
+            output.atomic(
+                "summary.md",
+                render_interpretation(
+                    Analysis.model_validate(result), prepared.session.speaker_aliases, segments
+                ).encode(),
             )
             done = json.loads(output.read("complete.json"))
             done["outputs"]["analysis.json"] = digest(output.read("analysis.json"))

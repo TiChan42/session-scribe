@@ -23,7 +23,7 @@ from pydantic import Field, TypeAdapter, model_validator
 
 from .commands import CommandRouter
 from .commands import definitions as session_definitions
-from .control import Denied
+from .control import Controller, Denied
 from .credentials import discord_token
 from .files import SafeFiles
 from .guilds import (
@@ -34,7 +34,7 @@ from .guilds import (
     Setup,
 )
 from .guilds import definitions as guild_definitions
-from .models import Identifier, InferenceSettings, Limits, Snowflake, StrictModel
+from .models import Identifier, InferenceSettings, Limits, SessionState, Snowflake, StrictModel
 from .render import ProtocolPublisher
 from .store import Conflict
 from .voice import ReceiveUnavailable
@@ -100,18 +100,282 @@ class ControlService:
             )
         raise ValueError("unknown configuration command")
 
-    def session(self, name: str, actor: AdminActor, options: dict):
+    def session(
+        self,
+        name: str,
+        actor: AdminActor,
+        options: dict,
+        *,
+        current_participants: frozenset[str] | None = None,
+    ):
         self.allow(actor)
+        if name == "alias":
+            return self.alias(
+                actor,
+                alias=options.get("alias"),
+                recording_consent=options["recording_consent"],
+                current_participants=current_participants,
+            )
+        if name == "alias-delete":
+            return self.delete_alias(actor)
         if "session_id" in options:
             TypeAdapter(Identifier).validate_python(options["session_id"], strict=True)
-        with self.directory.controller(actor, self.status, self.close_audio) as controller:
+        with self.directory.controller(
+            actor,
+            lambda channel, message: self.status(actor.guild_id, channel, message),
+            lambda sid: self.close_audio(actor.guild_id, sid),
+        ) as controller:
             if name in ("start", "resume"):
                 controller.authorize(actor, name)
+                if name == "resume":
+                    if current_participants is None:
+                        raise Denied("fresh voice membership is required to resume")
+                    target = controller.owned(actor, options["session_id"], "resume")
+                    if target.voice_channel_id not in controller.config.voice_channel_ids:
+                        raise Denied("session voice channel is outside this guild")
+                    controller.membership(
+                        target.id,
+                        current_participants,
+                        speaker_aliases=self.directory.voice_aliases(
+                            actor.guild_id, target.voice_channel_id
+                        ),
+                    )
                 raise ReceiveUnavailable("DAVE reception awaits review and authorized tests")
             if name == "process":
                 controller.owned(actor, options["session_id"], "process")
                 raise ReceiveUnavailable("native processing workers are not enabled")
             return CommandRouter(controller).dispatch(name, actor, **options)
+
+    def alias(
+        self,
+        actor: AdminActor,
+        *,
+        alias: str | None,
+        recording_consent: str,
+        current_participants: frozenset[str] | None,
+    ) -> dict:
+        self.allow(actor)
+        config, _revision = self.directory.configuration(actor.guild_id)
+        if (
+            actor.voice_channel_id is None
+            or actor.channel_id not in config.command_channel_ids
+            or actor.voice_channel_id not in config.voice_channel_ids
+        ):
+            raise Denied("a configured voice and command channel are required")
+        if recording_consent not in ("accept", "decline"):
+            raise ValueError("recording consent choice required")
+        if alias is not None:
+            bound_alias = self.directory.set_voice_alias(
+                actor.guild_id, actor.voice_channel_id, actor.user_id, alias
+            )
+        else:
+            bound_alias = self.directory.voice_aliases(actor.guild_id, actor.voice_channel_id).get(
+                actor.user_id
+            )
+            if bound_alias is None:
+                raise ValueError("enter an alias before confirming consent")
+
+        store = self.directory.store(actor.guild_id)
+        try:
+            controller = Controller(
+                config,
+                store,
+                lambda channel, message: self.status(actor.guild_id, channel, message),
+                lambda sid: self.close_audio(actor.guild_id, sid),
+            )
+            active = None
+            for row in store.db.execute("SELECT id FROM sessions").fetchall():
+                try:
+                    session = store.session(row[0])
+                except KeyError:
+                    continue
+                if session.voice_channel_id == actor.voice_channel_id and session.state in (
+                    SessionState.WAITING,
+                    SessionState.RECORDING,
+                    SessionState.PAUSED,
+                ):
+                    active = session
+                    break
+            if active is None:
+                # Aliases persist, but consent is never carried into an unknown future session.
+                return {"alias_saved": True, "consent_applied": False}
+            if current_participants is None or actor.user_id not in current_participants:
+                raise Denied("fresh voice membership is required for recording consent")
+            controller.membership(
+                active.id,
+                current_participants,
+                speaker_aliases=self.directory.voice_aliases(
+                    actor.guild_id, actor.voice_channel_id
+                ),
+            )
+            updated = controller.alias_consent(
+                actor,
+                active.id,
+                bound_alias,
+                accepted=recording_consent == "accept",
+            )
+            return {
+                "alias_saved": True,
+                "consent_applied": True,
+                "recording_consent": recording_consent,
+                "state": updated.state.value,
+            }
+        finally:
+            store.close()
+
+    def session_voice_channel(self, actor: AdminActor, sid: str) -> str:
+        """Return a session's configured voice channel for a fresh Discord cache read."""
+        TypeAdapter(Identifier).validate_python(sid, strict=True)
+        self.allow(actor)
+        with self.directory.controller(
+            actor,
+            lambda channel, message: self.status(actor.guild_id, channel, message),
+            lambda session_id: self.close_audio(actor.guild_id, session_id),
+        ) as controller:
+            session = controller.owned(actor, sid, "resume")
+            if session.state not in (
+                SessionState.WAITING,
+                SessionState.RECORDING,
+                SessionState.PAUSED,
+            ):
+                raise Conflict("session is already finalized")
+            return session.voice_channel_id
+
+    def delete_alias(self, actor: AdminActor) -> bool:
+        self.allow(actor)
+        voice_channel_id = actor.voice_channel_id
+        if voice_channel_id is None:
+            raise Denied("join the configured voice channel first")
+        config, _revision = self.directory.configuration(actor.guild_id)
+        if (
+            actor.channel_id not in config.command_channel_ids
+            or voice_channel_id not in config.voice_channel_ids
+        ):
+            raise Denied("a configured voice and command channel are required")
+        self.directory.delete_voice_alias(actor.guild_id, voice_channel_id, actor.user_id)
+        store = self.directory.store(actor.guild_id)
+        try:
+            controller = Controller(
+                config,
+                store,
+                lambda channel, message: self.status(actor.guild_id, channel, message),
+                lambda sid: self.close_audio(actor.guild_id, sid),
+            )
+            for row in store.db.execute("SELECT id FROM sessions").fetchall():
+                try:
+                    session = store.session(row[0])
+                except KeyError:
+                    continue
+                if (
+                    session.voice_channel_id == voice_channel_id
+                    and actor.user_id in session.participants
+                    and session.state
+                    in (SessionState.WAITING, SessionState.RECORDING, SessionState.PAUSED)
+                ):
+                    controller.remove_session_alias(actor, session.id)
+            return True
+        finally:
+            store.close()
+
+    def voice_membership(
+        self, guild_id: str, voice_channel_id: str, participants: frozenset[str]
+    ) -> bool:
+        if self.policy.allowed_guild_ids and guild_id not in self.policy.allowed_guild_ids:
+            return False
+        try:
+            config, _revision = self.directory.configuration(guild_id)
+        except KeyError:
+            return False
+        if voice_channel_id not in config.voice_channel_ids:
+            return False
+        store = self.directory.store(guild_id)
+        try:
+            controller = Controller(
+                config,
+                store,
+                lambda channel, message: self.status(guild_id, channel, message),
+                lambda sid: self.close_audio(guild_id, sid),
+            )
+            aliases = self.directory.voice_aliases(guild_id, voice_channel_id)
+            updated = False
+            for row in store.db.execute("SELECT id FROM sessions").fetchall():
+                try:
+                    session = store.session(row[0])
+                except KeyError:
+                    continue
+                if session.voice_channel_id == voice_channel_id and session.state in (
+                    SessionState.WAITING,
+                    SessionState.RECORDING,
+                    SessionState.PAUSED,
+                ):
+                    controller.membership(session.id, participants, speaker_aliases=aliases)
+                    updated = True
+            return updated
+        finally:
+            store.close()
+
+    def remind_consent(self, now: int | None = None) -> int:
+        guilds = [
+            row[0]
+            for row in self.directory.db.execute(
+                "SELECT guild_id FROM configurations ORDER BY guild_id"
+            )
+            if not self.policy.allowed_guild_ids or row[0] in self.policy.allowed_guild_ids
+        ]
+        reminders = 0
+        for guild_id in guilds:
+            config, _revision = self.directory.configuration(guild_id)
+            store = self.directory.store(guild_id)
+            try:
+                controller = Controller(
+                    config,
+                    store,
+                    lambda channel, message, guild_id=guild_id: self.status(
+                        guild_id, channel, message
+                    ),
+                    lambda sid, guild_id=guild_id: self.close_audio(guild_id, sid),
+                )
+                for row in store.db.execute("SELECT id FROM sessions").fetchall():
+                    try:
+                        session = store.session(row[0])
+                    except KeyError:
+                        continue
+                    if controller.remind_consent(session.id, now):
+                        reminders += 1
+            finally:
+                store.close()
+        return reminders
+
+    def pause_for_voice_state_loss(self) -> int:
+        guilds = [
+            row[0]
+            for row in self.directory.db.execute(
+                "SELECT guild_id FROM configurations ORDER BY guild_id"
+            )
+            if not self.policy.allowed_guild_ids or row[0] in self.policy.allowed_guild_ids
+        ]
+        paused = 0
+        for guild_id in guilds:
+            config, _revision = self.directory.configuration(guild_id)
+            store = self.directory.store(guild_id)
+            try:
+                controller = Controller(
+                    config,
+                    store,
+                    lambda channel, message, guild_id=guild_id: self.status(
+                        guild_id, channel, message
+                    ),
+                    lambda sid, guild_id=guild_id: self.close_audio(guild_id, sid),
+                )
+                for row in store.db.execute("SELECT id FROM sessions").fetchall():
+                    try:
+                        if controller.pause_for_voice_state_loss(row[0]):
+                            paused += 1
+                    except KeyError:
+                        continue
+            finally:
+                store.close()
+        return paused
 
     def close(self):
         self.directory.close()
@@ -152,12 +416,23 @@ def authenticated_actor(ctx) -> AdminActor:
         or ctx.channel.guild.id != ctx.guild.id
     ):
         raise Denied("guild interaction required")
+    voice_state = getattr(ctx.author, "voice", None)
+    voice_channel = getattr(voice_state, "channel", None)
+    voice_channel_id = None
+    if voice_channel is not None:
+        if (
+            not isinstance(voice_channel, discord.VoiceChannel)
+            or voice_channel.guild.id != ctx.guild.id
+        ):
+            raise Denied("caller voice state is not a channel in this guild")
+        voice_channel_id = str(voice_channel.id)
     return AdminActor(
         guild_id=str(ctx.guild.id),
         channel_id=str(ctx.channel.id),
         user_id=str(ctx.author.id),
         role_ids=frozenset(str(role.id) for role in ctx.author.roles),
         permissions=ctx.author.guild_permissions.value,
+        voice_channel_id=voice_channel_id,
     )
 
 
@@ -304,7 +579,13 @@ def register_commands(client, invoke):
                     **attributes,
                 )
             )
-            parameters.append(inspect.Parameter(option["name"], inspect.Parameter.KEYWORD_ONLY))
+            parameters.append(
+                inspect.Parameter(
+                    option["name"],
+                    inspect.Parameter.KEYWORD_ONLY,
+                    default=(inspect.Parameter.empty if option.get("required", False) else None),
+                )
+            )
         # Pycord matches explicitly provided Options to the callback signature;
         # this constructs metadata, never executable source or model output.
         callback.__signature__ = inspect.Signature(parameters)
@@ -334,6 +615,7 @@ class ControlBot:
         self.policy = policy
         intents = discord.Intents.none()
         intents.guilds = True
+        intents.voice_states = True
         self.client = discord.Bot(
             intents=intents,
             allowed_mentions=discord.AllowedMentions.none(),
@@ -349,11 +631,42 @@ class ControlBot:
         register_commands(self.client, self.invoke)
         self.client.event(self.on_ready)
         self.client.event(self.on_disconnect)
+        self.client.event(self.on_voice_state_update)
         self.client.event(self.on_application_command_error)
         self.client.event(self.on_error)
 
-    async def policy_call(self, fn, *args):
-        return await self.loop.run_in_executor(self.executor, functools.partial(fn, *args))
+    async def policy_call(self, fn, *args, **kwargs):
+        return await self.loop.run_in_executor(
+            self.executor, functools.partial(fn, *args, **kwargs)
+        )
+
+    async def send_status(self, guild_id: str, channel_id: str, message: str) -> str | None:
+        import discord
+
+        try:
+            guild_id = TypeAdapter(Snowflake).validate_python(guild_id, strict=True)
+            channel_id = TypeAdapter(Snowflake).validate_python(channel_id, strict=True)
+        except Exception:
+            return None
+        if not isinstance(message, str) or not 1 <= len(message) <= 1800:
+            return None
+        guild = self.client.get_guild(int(guild_id))
+        channel = guild.get_channel(int(channel_id)) if guild else None
+        member = guild.me if guild else None
+        if (
+            not isinstance(channel, discord.TextChannel)
+            or channel.guild.id != int(guild_id)
+            or member is None
+            or not channel.permissions_for(member).view_channel
+            or not channel.permissions_for(member).send_messages
+        ):
+            return None
+        sent = await channel.send(
+            message,
+            allowed_mentions=discord.AllowedMentions.none(),
+            suppress_embeds=True,
+        )
+        return str(sent.id)
 
     async def on_ready(self):
         if not self.commands_ready:
@@ -374,7 +687,33 @@ class ControlBot:
 
     async def on_disconnect(self):
         self.ready = False
+        if self.service is not None:
+            with contextlib.suppress(Exception):
+                await self.policy_call(self.service.pause_for_voice_state_loss)
         self.health()
+
+    async def on_voice_state_update(self, member, before, after):
+        if self.service is None or member.bot:
+            return
+        import discord
+
+        changed = {getattr(before, "channel", None), getattr(after, "channel", None)}
+        changed.discard(None)
+        for channel in changed:
+            if not isinstance(channel, discord.VoiceChannel):
+                continue
+            participants = {str(person.id) for person in channel.members if not person.bot}
+            if getattr(getattr(before, "channel", None), "id", None) == channel.id:
+                participants.discard(str(member.id))
+            if getattr(getattr(after, "channel", None), "id", None) == channel.id:
+                participants.add(str(member.id))
+            with contextlib.suppress(Exception):
+                await self.policy_call(
+                    self.service.voice_membership,
+                    str(member.guild.id),
+                    str(channel.id),
+                    frozenset(participants),
+                )
 
     async def on_error(self, _event, *_args, **_kwargs):
         logging.getLogger(__name__).error("Discord event failed; details suppressed")
@@ -403,6 +742,7 @@ class ControlBot:
             self.health()
             if self.ready and self.service is not None:
                 try:
+                    await self.policy_call(self.service.remind_consent)
                     await self.policy_call(
                         self.service.publish_once,
                         lambda guild: DiscordDelivery(self.client, self.loop, guild),
@@ -444,12 +784,54 @@ class ControlBot:
                 prepared = self.prepare_options(ctx, name, options)
                 result = await self.policy_call(self.service.configure, name, actor, prepared)
             else:
+                current_participants = None
                 # Session start does not inspect participants or join while gated.
                 if "voice_channel" in options:
-                    channel = resolved_channel(ctx.guild, options["voice_channel"], "voice")
-                    options = options | {"voice_channel_id": channel.id}
+                    selected = resolved_channel(ctx.guild, options["voice_channel"], "voice")
+                    channel = ctx.guild.get_channel(int(selected.id))
+                    if not isinstance(channel, discord.VoiceChannel):
+                        raise Denied("voice channel membership is unavailable")
+                    participants = frozenset(
+                        str(member.id) for member in channel.members if not member.bot
+                    )
+                    options = options | {
+                        "voice_channel_id": channel.id,
+                        "participants": participants,
+                    }
                     options.pop("voice_channel")
-                result = await self.policy_call(self.service.session, name, actor, options)
+                if name == "alias":
+                    channel_id = actor.voice_channel_id
+                    if channel_id is None:
+                        raise Denied("join the configured voice channel first")
+                elif name == "resume":
+                    channel_id = await self.policy_call(
+                        self.service.session_voice_channel,
+                        actor,
+                        options["session_id"],
+                    )
+                else:
+                    channel_id = None
+                if channel_id is not None:
+                    channel = ctx.guild.get_channel(int(channel_id))
+                    if (
+                        not isinstance(channel, discord.VoiceChannel)
+                        or channel.guild.id != ctx.guild.id
+                    ):
+                        raise Denied("voice channel membership is unavailable")
+                    current_participants = frozenset(
+                        str(member.id) for member in channel.members if not member.bot
+                    )
+                    if name == "alias":
+                        if actor.voice_channel_id != channel_id:
+                            raise Denied("join the session voice channel first")
+                        current_participants |= {actor.user_id}
+                result = await self.policy_call(
+                    self.service.session,
+                    name,
+                    actor,
+                    options,
+                    current_participants=current_participants,
+                )
             if isinstance(result, bytes):
                 if len(result) > 2_000_000:
                     raise ValueError("result attachment exceeds bound")
@@ -477,6 +859,29 @@ class ControlBot:
                 return
             if isinstance(result, StrictModel):
                 result = result.model_dump(mode="json")
+            if name == "alias" and isinstance(result, dict):
+                if result.get("consent_applied"):
+                    text = (
+                        "Alias gespeichert. Deine Aufzeichnungsentscheidung gilt nur für "
+                        "diese Sitzung. Nach Zustimmung aller Personen muss die Leitung "
+                        "mit /resume fortsetzen."
+                        if result.get("recording_consent") == "accept"
+                        else "Alias gespeichert; deine Ablehnung hält die Aufnahme angehalten. "
+                        "Nur eine neue ausdrückliche Zustimmung per /alias erlaubt späteres "
+                        "Fortsetzen."
+                    )
+                else:
+                    text = (
+                        "Alias gespeichert. Es gibt keine aktive Sitzung; deine Auswahl "
+                        "wurde deshalb nicht als Aufnahmezustimmung gespeichert. Bitte /alias "
+                        "während der wartenden Sitzung erneut ausfüllen."
+                    )
+            elif name == "alias-delete":
+                text = "Dein Alias wurde gelöscht; die Aufzeichnungszustimmung wurde widerrufen."
+            else:
+                text = (
+                    json.dumps(result, ensure_ascii=False, indent=2) if result is not None else "OK"
+                )
             if isinstance(result, dict) and name in (
                 "setup",
                 "show",
@@ -489,7 +894,7 @@ class ControlBot:
                     "configuration": result,
                     "notice": "Aufnahme und Cloud bleiben bis zur Betriebsfreigabe gesperrt.",
                 }
-            text = json.dumps(result, ensure_ascii=False, indent=2) if result is not None else "OK"
+                text = json.dumps(result, ensure_ascii=False, indent=2)
             if len(text) <= 1800:
                 await ctx.respond(
                     text, ephemeral=True, allowed_mentions=discord.AllowedMentions.none()
@@ -514,9 +919,12 @@ class ControlBot:
         except KeyError:
             await ctx.respond("Server mit /setup einrichten; Sitzungs-ID prüfen.", ephemeral=True)
         except Conflict:
-            await ctx.respond(
-                "Aktive Sitzung oder Verarbeitung zuerst abschließen.", ephemeral=True
+            message = (
+                "Dieser Alias ist im Sprachkanal bereits vergeben. Bitte wähle einen anderen."
+                if name == "alias"
+                else "Aktive Sitzung oder Verarbeitung zuerst abschließen."
             )
+            await ctx.respond(message, ephemeral=True)
         except ValueError:
             await ctx.respond("Ungültige Eingabe oder Ergebnis nicht verfügbar.", ephemeral=True)
         except Exception:
@@ -529,12 +937,17 @@ class ControlBot:
         self.loop = asyncio.get_running_loop()
 
         def initialize():
-            # A status callback can only post into the actor's guild. Start/resume
-            # cannot currently reach it, since voice reception is disabled above.
-            def status(_channel, _text):
-                raise OSError("recording status transport is not enabled")
+            def status(guild_id, channel_id, message):
+                future = asyncio.run_coroutine_threadsafe(
+                    self.send_status(guild_id, channel_id, message), self.loop
+                )
+                try:
+                    return future.result(timeout=5)
+                except Exception:
+                    future.cancel()
+                    return None
 
-            def close_audio(_sid):
+            def close_audio(_guild_id, _sid):
                 return None
 
             self.service = ControlService(self.policy, status, close_audio)

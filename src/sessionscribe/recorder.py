@@ -63,7 +63,11 @@ class Recorder:
         s = self.store.session(self.sid)
         if s.state != SessionState.RECORDING or self.failure:
             return False
-        if frame.speaker_id not in s.participants or not s.participants <= s.consented:
+        if (
+            frame.speaker_id not in s.participants
+            or not s.participants <= s.consented
+            or not s.participants <= s.speaker_aliases.keys()
+        ):
             self._fail("unconfirmed_participant")
             return False
         if (

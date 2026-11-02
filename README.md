@@ -97,7 +97,13 @@ Die Healthprüfung verlangt eine frische Quittung derselben Revision und erfolgr
 Command-Registrierung. Sie bestätigt ausschließlich den Steuerungsclient.
 
 Aufnahmebefehle prüfen Guild, Kanal, Nutzer/Rollen, Eigentümer und Zustimmung.
-Neue Teilnehmer pausieren; Notstopp benötigt keine Cloud. Parallele Aufnahmen
+`/alias` bindet den selbst gewählten Namen an die Discord-ID im aktuellen
+Sprachkanal und fragt die Aufnahmeentscheidung für genau diese Sitzung ab.
+Gespeicherte Namen übertragen keine Zustimmung auf spätere Sitzungen. Ein
+Beitritt ohne Zustimmung pausiert sofort; der Befehlschat erinnert minütlich,
+bis alle zugestimmt haben oder `/stop` beendet. `/pause` und `/resume` steuern
+die Sitzung ausdrücklich. Live-DAVE bleibt bis zu autorisierten Tests gesperrt.
+Parallele Aufnahmen
 schreiben begrenzte FLAC-Segmente direkt auf Platte. Stop reiht jede Sitzung mit Audio
 automatisch ein; andere Aufnahmen können während STT/LLM weiterlaufen. Der Recorder lädt keine
 Whisper-/Torch-Modelle. Offline-STT verwendet multilingual small mit CPU/int8.

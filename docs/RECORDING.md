@@ -9,6 +9,27 @@ jeweiligen Guilds einladen. Tokens werden niemals über Commands übermittelt.
 Die Discord-Beschränkung ist im [Voice-Guide der SDK-Maintainer](https://github.com/discordjs/guide/blob/main/guide/voice/voice-connections.md)
 beschrieben. Es wird kein Wechsel aus einem bereits aufgenommenen Kanal erzwungen.
 
+## Alias und Sitzungszustimmung
+
+`/alias` ist an den Befehlschat und den Sprachkanal gebunden, in dem die Person
+gerade ist. Der Benutzer gibt seinen Namen im Protokoll ein und wählt im
+Pflichtfeld, ob die konkrete Sitzung aufgezeichnet werden darf. Ohne neuen
+Namen wird der eigene, für diesen Sprachkanal gespeicherte Alias übernommen.
+Profile sind pro Guild/Sprachkanal gespeichert; sie enthalten keine Aufnahme-
+oder Cloudzustimmung. `/alias-delete` löscht das eigene Profil und widerruft
+eine aktive Sitzungszustimmung. Bereits abgeschlossene Session-Snapshots,
+Backups oder veröffentlichte Protokolle werden dadurch nicht nachträglich geändert.
+
+Eine Session bleibt wartend, bis jeder aktuelle Teilnehmer einen eindeutigen
+Alias hat und `/alias` für diese Session akzeptiert hat. Vor Resume wird die
+aktuelle Voice-Belegung aus Discord eingelesen. Ein Join pausiert die Aufnahme
+vor weiteren akzeptierten Frames; ein gespeicherter Alias kann die Anzeige
+füllen, nie aber die Zustimmung. Der Befehlschat meldet den Join sofort und
+erinnert bei ausstehender Zustimmung frühestens nach 60 Sekunden, anschließend
+minütlich. `/pause` schließt die aktuelle Datei und `/resume` startet erst nach
+erneuter Vollprüfung. Weder Zustimmung noch Verbindung lösen automatischen
+Wiederanlauf aus. Der Live-Empfang bleibt bis zum geprüften DAVE-Test gesperrt.
+
 ## Protokollziele
 
 | Einstellung | Verhalten |

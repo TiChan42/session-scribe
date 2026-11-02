@@ -52,6 +52,8 @@ class RecordingPool:
         actor: Actor,
         voice_channel_id: str,
         participants: frozenset[str],
+        *,
+        speaker_aliases: dict[str, str] | None = None,
     ) -> Session:
         with self._lock:
             controller.authorize(actor, "start")
@@ -89,7 +91,11 @@ class RecordingPool:
             if selected is None:
                 raise Conflict("no free recording bot in this guild")
             session = controller.start(
-                actor, voice_channel_id, participants, recorder_bot_id=selected.id
+                actor,
+                voice_channel_id,
+                participants,
+                recorder_bot_id=selected.id,
+                speaker_aliases=speaker_aliases,
             )
             try:
                 capture_store = Store(controller.store.files.root, actor.guild_id)

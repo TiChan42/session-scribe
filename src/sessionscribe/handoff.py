@@ -22,6 +22,7 @@ def session_data(session: Session) -> dict:
     data = session.model_dump(mode="json")
     for key in ("participants", "attendees", "consented", "cloud_consent"):
         data[key] = sorted(data[key])
+    data["speaker_aliases"] = dict(sorted(data["speaker_aliases"].items()))
     return data
 
 

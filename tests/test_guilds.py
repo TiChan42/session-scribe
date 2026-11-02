@@ -1,3 +1,5 @@
+import sqlite3
+
 import pytest
 
 from sessionscribe.control import Denied
@@ -111,6 +113,53 @@ def test_same_mode_in_two_guilds_never_shares_sessions_or_budgets(directory):
     finally:
         first.close()
         second.close()
+
+
+def test_alias_profiles_are_per_guild_and_voice_channel_and_persist(directory):
+    directory.setup(actor(), options())
+    directory.setup(actor("2000"), options("2000"))
+    voice_two = GuildChannel(id="10006", guild_id="1000", kind="voice")
+    directory.set_voice_protocol(actor(), voice_two, None)
+
+    assert directory.set_voice_alias("1000", "10003", "1001", "Ada") == "Ada"
+    assert directory.set_voice_alias("1000", "10006", "1001", "Ada") == "Ada"
+    assert directory.set_voice_alias("2000", "20003", "1001", "Ben") == "Ben"
+    with pytest.raises(Conflict, match="already used"):
+        directory.set_voice_alias("1000", "10003", "1005", "ada")
+    assert directory.voice_aliases("1000", "10003") == {"1001": "Ada"}
+    assert directory.voice_aliases("1000", "10006") == {"1001": "Ada"}
+    assert directory.voice_aliases("2000", "20003") == {"1001": "Ben"}
+
+    root, inference = directory.files.root, directory.inference
+    directory.close()
+    reopened = GuildDirectory(root, inference)
+    try:
+        assert reopened.voice_aliases("1000", "10003") == {"1001": "Ada"}
+        assert reopened.delete_voice_alias("1000", "10003", "1001")
+        assert reopened.voice_aliases("1000", "10003") == {}
+        assert reopened.voice_aliases("1000", "10006") == {"1001": "Ada"}
+    finally:
+        reopened.close()
+
+
+def test_schema_two_guild_registry_adds_alias_profiles_without_losing_config(directory):
+    directory.setup(actor(), options())
+    root, inference = directory.files.root, directory.inference
+    directory.close()
+    database = root / "guild-config.sqlite3"
+    connection = sqlite3.connect(database)
+    try:
+        connection.execute("DROP TABLE voice_aliases")
+        connection.execute("PRAGMA user_version=2")
+    finally:
+        connection.close()
+    migrated = GuildDirectory(root, inference)
+    try:
+        assert migrated.db.execute("PRAGMA user_version").fetchone()[0] == 3
+        assert migrated.show(actor()).guild_id == "1000"
+        assert migrated.voice_aliases("1000", "10003") == {}
+    finally:
+        migrated.close()
 
 
 def test_active_session_prevents_reconfiguration(directory):

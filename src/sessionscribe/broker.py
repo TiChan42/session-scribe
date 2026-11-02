@@ -295,11 +295,19 @@ class Broker:
             inputs = SafeFiles(prepared.input_path)
             segments = self._segments(inputs.read("transcript.json"), prepared.session.id)
             result = validate_analysis(data["analysis.json"].decode(), prepared.session, segments)
-            if data["result.md"] != render_analysis(result).encode():
+            if (
+                data["result.md"]
+                != render_analysis(result, prepared.session.speaker_aliases, segments).encode()
+            ):
                 raise ValueError("unexpected rendered model output")
             from .render import render_interpretation
 
-            if data["summary.md"] != render_interpretation(result).encode():
+            if (
+                data["summary.md"]
+                != render_interpretation(
+                    result, prepared.session.speaker_aliases, segments
+                ).encode()
+            ):
                 raise ValueError("unexpected rendered interpretation")
             metadata = json.loads(data["inference.json"])
             if metadata.get("settings") != prepared.session.inference.model_dump(mode="json"):

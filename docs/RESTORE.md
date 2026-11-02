@@ -48,7 +48,8 @@ verweigern Hashabweichungen. Verwaiste Dateien ohne DB-Commit sind keine
 erfolgreichen Aufträge. Broker-Caches und Stage-Identitätsmarker getrennt je
 Mandant wiederherstellen, niemals zwischen Instanzen umwidmen.
 
-Zusätzlich den gemeinsamen `guild-config.sqlite3`-Stand und die getrennten Steuerungs-/Aufnahme-Bot-Secrets über getrennte geschützte Wege sichern. Stores gehören anhand numerischer
+Das Guild-Konfigurationsregister verwendet Schema 3. Zusätzlich den gemeinsamen `guild-config.sqlite3`-Stand (einschließlich der
+pro Guild/Sprachkanal gespeicherten Aliasprofile) und die getrennten Steuerungs-/Aufnahme-Bot-Secrets über getrennte geschützte Wege sichern. Stores gehören anhand numerischer
 Guild-ID zu ihrem Server, nicht anhand ihres Modus. Alte Entwicklungsdateien
 werden ohne explizite Guild-Zuordnung nicht automatisch übernommen.
 Die Betreiberpolicy des Steuerungsclients separat sichern; sie enthält nur

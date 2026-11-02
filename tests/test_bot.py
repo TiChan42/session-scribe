@@ -111,6 +111,91 @@ def test_control_policy_capacity_roles_guilds_and_voice_gate(policy):
         service.close()
 
 
+def test_alias_command_is_self_bound_and_session_consent_is_not_reused(policy):
+    statuses = []
+    service = ControlService(
+        policy,
+        lambda guild, channel, message: statuses.append((guild, channel, message))
+        or "synthetic-status",
+        Mock(),
+    )
+    owner = admin()
+    voice_actor = owner.model_copy(update={"voice_channel_id": "11"})
+    try:
+        service.configure("setup", owner, setup().model_dump())
+        profile = service.session(
+            "alias",
+            voice_actor,
+            {"alias": "Ada", "recording_consent": "accept"},
+            current_participants=frozenset({owner.user_id}),
+        )
+        assert profile == {"alias_saved": True, "consent_applied": False}
+        assert service.directory.voice_aliases("1000", "11") == {owner.user_id: "Ada"}
+
+        config, revision = service.directory.configuration("1000")
+        service.directory._save(
+            owner,
+            config.model_copy(update={"recording_enabled": True}),
+            revision,
+        )
+        with service.directory.controller(
+            owner, lambda *_: "synthetic-status", Mock()
+        ) as controller:
+            session = controller.start(
+                owner,
+                "11",
+                frozenset({owner.user_id}),
+                speaker_aliases=service.directory.voice_aliases("1000", "11"),
+            )
+        assert session.consented == frozenset()
+        assert service.session_voice_channel(owner, session.id) == "11"
+
+        applied = service.session(
+            "alias",
+            voice_actor,
+            {"alias": None, "recording_consent": "accept"},
+            current_participants=frozenset({owner.user_id}),
+        )
+        assert applied["consent_applied"] is True
+        store = service.directory.store("1000")
+        try:
+            session = store.session(session.id)
+            assert session.speaker_aliases == {owner.user_id: "Ada"}
+            assert session.consented == frozenset({owner.user_id})
+        finally:
+            store.close()
+
+        newcomer = voice_actor.model_copy(update={"user_id": "21"})
+        assert service.voice_membership("1000", "11", frozenset({"20", "21"}))
+        paused = service.session(
+            "alias",
+            newcomer,
+            {"alias": "Ben", "recording_consent": "accept"},
+            current_participants=frozenset({"20", "21"}),
+        )
+        assert paused["state"] == "paused"
+        store = service.directory.store("1000")
+        try:
+            session = store.session(session.id)
+            assert session.consented == frozenset({"20", "21"})
+            assert session.speaker_aliases == {"20": "Ada", "21": "Ben"}
+        finally:
+            store.close()
+
+        assert service.session("alias-delete", voice_actor, {}) is True
+        store = service.directory.store("1000")
+        try:
+            session = store.session(session.id)
+            assert "20" not in session.speaker_aliases
+            assert "20" not in session.consented
+            assert session.stop_reason == "consent_required"
+        finally:
+            store.close()
+        assert statuses
+    finally:
+        service.close()
+
+
 def test_operator_guild_allowlist(policy):
     service = ControlService(
         policy.model_copy(update={"allowed_guild_ids": frozenset({"3000"})}), Mock(), Mock()
@@ -136,10 +221,12 @@ def context(permissions=32):
     guild = SimpleNamespace(id=1000, me=object())
     author = Mock(spec=discord.Member)
     author.guild, author.id, author.roles = guild, 20, []
+    author.voice = None
     author.guild_permissions = discord.Permissions(permissions)
     text = channel(guild, 10)
     voice = Mock(spec=discord.VoiceChannel)
     voice.id, voice.guild = 11, guild
+    voice.members = []
     voice.permissions_for.return_value = discord.Permissions(view_channel=True, connect=True)
     output = channel(guild)
     channels = {10: text, 11: voice, 12: output}
@@ -181,6 +268,8 @@ def test_real_pycord_registration_and_callbacks(policy):
                 "setup",
                 "config",
                 "start",
+                "alias",
+                "alias-delete",
                 "consent",
                 "revoke",
                 "pause",
@@ -193,6 +282,7 @@ def test_real_pycord_registration_and_callbacks(policy):
                 "delete",
             }
             assert all(cmd.to_dict()["contexts"] == [0] for cmd in commands.values())
+            assert bot.client.intents.voice_states
             assert not bot.client.intents.members and not bot.client.intents.message_content
             ctx = context(permissions=0)
             await commands["setup"].callback(ctx, **setup().model_dump())

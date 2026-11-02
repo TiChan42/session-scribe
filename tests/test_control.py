@@ -31,10 +31,10 @@ def test_role_name_is_not_identity(rig):
 def test_no_audio_before_all_consent_and_visible_status(rig):
     frame = Frame(rig.actor.user_id, 0, bytes(FRAME_BYTES))
     assert not rig.recorder.accept(frame)
-    rig.control.consent(rig.actor, rig.session.id, cloud=True)
+    rig.control.alias_consent(rig.actor, rig.session.id, "Ada", accepted=True)
     with pytest.raises(Denied):
         rig.control.resume(rig.actor, rig.session.id)
-    rig.control.consent(rig.other, rig.session.id, cloud=False)
+    rig.control.alias_consent(rig.other, rig.session.id, "Ben", accepted=True)
     rig.control.status = lambda *_: ""
     with pytest.raises(Denied):
         rig.control.resume(rig.actor, rig.session.id)
@@ -105,8 +105,28 @@ def test_disabled_configuration_and_disallowed_channel(rig):
 
 
 def test_slash_router_checks_every_action(rig):
-    assert {d["name"] for d in definitions()} >= {"stop", "delete", "process", "consent"}
-    assert all(not d["dm_permission"] for d in definitions())
+    command_definitions = definitions()
+    assert {d["name"] for d in command_definitions} >= {
+        "stop",
+        "delete",
+        "process",
+        "consent",
+        "alias",
+        "alias-delete",
+    }
+    assert all(not d["dm_permission"] for d in command_definitions)
+    alias_options = {
+        option["name"]: option
+        for option in next(item for item in command_definitions if item["name"] == "alias")[
+            "options"
+        ]
+    }
+    assert alias_options["recording_consent"]["required"] is True
+    assert {choice["value"] for choice in alias_options["recording_consent"]["choices"]} == {
+        "accept",
+        "decline",
+    }
+    assert alias_options["alias"]["required"] is False
     with pytest.raises(Denied):
         CommandRouter(rig.control).dispatch("queue", rig.other)
     with pytest.raises(ValueError):

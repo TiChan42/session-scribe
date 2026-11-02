@@ -33,7 +33,8 @@ gewählt werden. [Discord OAuth2](https://docs.discord.com/developers/topics/oau
 | Bereich | Minimale Bot-Rechte für den geplanten Betrieb |
 | --- | --- |
 | Befehls-/Ergebniskanal | Kanäle ansehen, Nachrichten senden |
-| Freigegebener Sprachkanal | Kanal ansehen, Verbinden |
+| Steuerungsbot, Sprachkanal | Kanal ansehen, um Beitritte/Verlassen zu erkennen |
+| Aufnahme-Bot, Sprachkanal | Kanal ansehen, Verbinden; Sprechen/TTS ist nicht nötig |
 | Protokolle als Markdown-Anhang | Dateien anhängen für längere Ergebnisse |
 
 Administrator, Sprechen/TTS, Rollen-/Kanalverwaltung und Massenmentions sind nicht
@@ -41,9 +42,9 @@ für den geplanten reinen Empfang vorgesehen. Der einrichtende Mensch benötigt
 „Server verwalten“; der Bot benötigt dieses Verwaltungsrecht nicht. Rechte pro
 Kanal einschränken. [Discord-Berechtigungen](https://docs.discord.com/developers/topics/permissions)
 
-Der Steuerungsclient nutzt aktuell nur GUILDS. GUILD_VOICE_STATES wird erst für
-den geprüften Aufnahmeadapter benötigt.
-Privilegierte Member-, Presence- und Message-Content-Intents bleiben zunächst aus;
+Der Steuerungsclient nutzt GUILDS und GUILD_VOICE_STATES, um den aktuellen
+Sprachkanal und Teilnehmerwechsel zu prüfen. Privilegierte Member-, Presence-
+und Message-Content-Intents bleiben aus;
 Rollen/Berechtigungen werden aus authentischen Interaktionsdaten geprüft.
 [Discord Gateway](https://docs.discord.com/developers/events/gateway#gateway-intents)
 
@@ -118,8 +119,10 @@ STT erhält keine Secrets. Kein fremdes Gateway-Budget und keine lokale LLM-Inst
 | Befehl | Prüfung / Wirkung |
 | --- | --- |
 | start | ACL start, eigener Guild-Store, freigegebener Sprachkanal, Eigentümer beteiligt |
-| consent / revoke | Teilnehmer bestätigt oder widerruft; neue Teilnehmer pausieren |
-| resume / pause | passende ACL und Eigentümer; alle zugestimmt und sichtbarer Status bestätigt |
+| alias | nur im konfigurierten Befehlschat und im eigenen Sprachkanal; Alias plus Aufnahmeentscheidung für die aktive Sitzung |
+| alias-delete | entfernt den eigenen Alias im aktuellen Sprachkanal und widerruft die Sitzungszustimmung |
+| consent / revoke | `/consent` verwaltet optionale Cloud-Textauswertung; `/revoke` widerruft beide Zustimmungen und pausiert |
+| resume / pause | passende ACL und Eigentümer; Resume verlangt aktuelle Belegung, Alias und Zustimmung aller sowie sichtbaren Status |
 | stop | aktueller Teilnehmer oder ACL stop; lokal ohne Cloud |
 | status / queue | ACL status, nur eigene Sitzungen innerhalb der aktuellen Guild |
 | process / result / delete | jeweilige ACL und Eigentümer; Verarbeitung/Löschung nur beendet |
@@ -128,12 +131,17 @@ Keine Actor-/Teilnehmerdaten aus freien Optionen übernehmen. Alle Aktionen müs
 über die aktuelle Guild geroutet werden. Keine frei wählbaren Ausgabeziele, keine
 DMs oder Massenmentions. Privilegierte Einrichtung ersetzt nicht die Aufnahme-ACL
 oder individuelle Zustimmung. Geteilte Mikrofone identifizieren keine Einzelpersonen.
+Ein Alias wird pro Guild und Sprachkanal dauerhaft gespeichert, bis die Person
+`/alias-delete` verwendet. Er erscheint in Protokollen anstelle der Discord-ID.
+Die Sitzungszustimmung wird nie aus diesem Profil übernommen. Neue Personen
+pausieren die Aufnahme; der Befehlschat erhält nach 60 Sekunden und danach
+minütlich eine Erinnerung. Es gibt keinen automatischen Wiederanlauf.
 
 ## Broker
 
 Je Guild und Phase disjunkte inbox/outbox/cache-Wurzeln, eigener Store und ein
 gemeinsamer globaler STT-Lock und separater globaler Auswertungs-Lock. Host-Broker, fester Supervisor und Rechteübergaben sind im Infrastrukturprojekt
-synthetisch geprüft; eine Linux-Abnahme bleibt erforderlich. Queue-Schema 5, Guild-Konfigurationsschema 2
+synthetisch geprüft; eine Linux-Abnahme bleibt erforderlich. Queue-Schema 5, Guild-Konfigurationsschema 3
 und Handoff-Schema 1 müssen
 zur Revision passen. Alte Entwicklungsstores mit Modus als Mandanten-ID werden
 nicht automatisch einer erfundenen Guild zugeordnet. Sie bleiben unverändert zur

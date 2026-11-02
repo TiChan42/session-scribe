@@ -112,11 +112,15 @@ class DiskCapture(threading.Thread):
                 user_id=policy.participant_id,
             )
             session = controller.start(
-                actor, policy.voice_channel_id, frozenset({policy.participant_id})
+                actor,
+                policy.voice_channel_id,
+                frozenset({policy.participant_id}),
+                speaker_aliases={policy.participant_id: "Testperson"},
             )
             holder["recorder"] = Recorder(store, session.id, config.limits)
             # This separate operator test accepts only the private expiring policy
             # bound to the participant's explicit consent, never a guild command.
+            controller.alias_consent(actor, session.id, "Testperson", accepted=True)
             controller.consent(actor, session.id, cloud=policy.cloud_consent)
             controller.resume(actor, session.id)
             self.started_at = time.monotonic()

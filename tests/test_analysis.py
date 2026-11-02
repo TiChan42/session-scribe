@@ -150,7 +150,7 @@ def test_short_segmented_session_fits_without_losing_evidence(transcript):
         transcript.segment.model_copy(
             update={
                 "id": f"{index:032x}:0000",
-                "speaker_id": "1000000000000000001",
+                "speaker_id": transcript.rig.actor.user_id,
                 "start_ms": index * 3000,
                 "end_ms": index * 3000 + 2800,
                 "text": "Kein Kauf beschlossen. Kim prüft zwölf Geräte.",
@@ -164,7 +164,11 @@ def test_short_segmented_session_fits_without_losing_evidence(transcript):
     assert payload["session_id"] == session.id
     assert len(payload["transcript"]) == len(segments)
     for source, delivered in zip(segments, payload["transcript"], strict=True):
-        assert {**delivered, "session_id": payload["session_id"]} == source.model_dump(mode="json")
+        expected = source.model_dump(mode="json", exclude={"session_id", "speaker_id"})
+        expected["speaker_alias"] = "Ada"
+        assert delivered == expected
+        assert "speaker_id" not in delivered
+    assert transcript.rig.actor.user_id not in request["messages"][1]["content"]
     with pytest.raises(ValueError, match="cross-session"):
         request_for(session, [segments[0].model_copy(update={"session_id": "f" * 32})])
 

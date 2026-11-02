@@ -47,6 +47,7 @@ def test_test_capture_keeps_durable_consent_segments_and_queue(tmp_path):
     try:
         session = with_store.session(capture.receipt["session_id"])
         assert session.consented == session.cloud_consent == frozenset({"1003"})
+        assert session.speaker_aliases == {"1003": "Testperson"}
         assert with_store.queue_status()[0]["kind"] == "stt"
     finally:
         with_store.close()

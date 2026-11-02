@@ -146,6 +146,15 @@ keine automatische Löschung fehlgeschlagener Daten. Siehe [BROKER.md](BROKER.md
 Der Operator verwaltet Aufnahme-Identitäten, Token-Dateien und erlaubte Guilds.
 Jeder Empfänger erhält nur sein eigenes Credential. Bots dürfen pro Guild nur
 einen Voice-Kanal belegen; zusätzliche Kanäle benötigen weitere Identitäten.
+Der Steuerungsclient benötigt den Guild-Voice-State-Intent, um Joins/Leaves zu
+erkennen. Seine Teilnehmerliste schließt Bot-Accounts aus. Aliasprofile liegen
+mit der Guild-Konfiguration im privaten `guild-config.sqlite3`; diese Datei
+enthält IDs und selbst gewählte Namen und ist entsprechend geschützt zu sichern.
+Bei Join, Einwilligungswiderruf oder Verlust des Voice-Status muss die aktive
+Aufnahme pausieren. `/resume` gleicht die aktuelle Kanalbelegung erneut ab.
+Ausstehende Alias-/Zustimmungsschritte erzeugen höchstens alle 60 Sekunden eine
+Nachricht im Befehlschat; `/stop` beendet die Session. Bis ein DAVE-Empfänger
+autorisiert qualifiziert ist, bleibt die allgemeine Voice-Aufnahme gesperrt.
 Globale Capture-Limits (Sessions, Spuren, reservierte Bytes und freie Diskreserve)
 gelten zusätzlich zu Guild-/Sessionquoten. Die reservierte Disk muss auch wartende
 Audios und Wiederholungs-Handoffs tragen. Volle Disk führt zum Stop/Admission-
@@ -155,7 +164,7 @@ Stop schließt und queued lokale Audios ohne Cloud-Abhängigkeit. Hintergrund-
 Scheduler arbeitet Guild-Queues fair ab; STT bleibt global seriell. Erst validierte
 LLM-Resultate erzeugen Protokoll-Outbox-Einträge. Pending/Sending-Outbox blockiert
 umlenkende Konfigurationsänderungen. Uncertain-Sendungen manuell abgleichen.
-Schema 5 und Guild-Konfigurationsschema 2 sind bei Readiness/Restore zu beachten.
+Schema 5 und Guild-Konfigurationsschema 3 sind bei Readiness/Restore zu beachten.
 Native Aufnahme-/IPC-/Token-/Bot-Pool-Integration und echte Versandtests sind offen.
 
 ## Native Adaptervorbereitung
