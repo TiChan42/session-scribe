@@ -63,6 +63,42 @@ def test_audio_queue_overflow_closes_gate_without_unbounded_growth():
     assert capture.frames.qsize() == 256
 
 
+@pytest.mark.parametrize("stop", ["duration", "storage"])
+def test_finalization_preserves_receipt_queue_and_original_failure(tmp_path, monkeypatch, stop):
+    from sessionscribe.recorder import Recorder
+
+    actual_accept = Recorder.accept
+
+    def accept(recorder, frame):
+        if stop == "storage" and frame.start_ms == 20:
+            recorder._fail("storage_limit")
+            return False
+        return actual_accept(recorder, frame)
+
+    monkeypatch.setattr(Recorder, "accept", accept)
+    capture = DiskCapture(policy(), lambda *_args: "synthetic-visible-receipt", tmp_path)
+    capture.start()
+    try:
+        assert capture.ready.wait(5) and capture.failure is None
+        capture.accept(Frame("1003", 0, b"\x01\x00" * (FRAME_BYTES // 2)))
+        capture.accept(Frame("1003", 60_000 if stop == "duration" else 20, bytes(FRAME_BYTES)))
+        capture.join(5)
+        assert not capture.is_alive()
+    finally:
+        capture.stop_requested.set()
+        capture.join(5)
+    receipt = capture.receipt
+    assert receipt is not None and receipt["frames"] == 1
+    assert receipt["failure"] == (None if stop == "duration" else "storage_limit")
+    store = Store(Path(receipt["root"]), "1000")
+    try:
+        session = store.session(receipt["session_id"])
+        assert session.state == ("stopped" if stop == "duration" else "interrupted")
+        assert store.queue_status()[0]["state"] == "pending"
+    finally:
+        store.close()
+
+
 def packet(timestamp, pcm=None):
     return SimpleNamespace(
         packet=SimpleNamespace(ssrc=501, timestamp=timestamp, decrypted_data=b"synthetic-opus"),

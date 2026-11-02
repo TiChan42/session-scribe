@@ -190,3 +190,9 @@ Abbruchgrund und gezählte Zeitstempel-Ausreißer; ihr Produktionsfreigabefeld b
 false. Zeitstempel-Ausreißer werden als verlorene Pakete behandelt, ohne gültige
 Nachfolgepakete zu verwerfen. Fehlende Sprecherfreigabe, Entschlüsselung oder
 Ressourcen bleiben Abbruchgründe. Keine Rohpakete oder Exception-Texte protokollieren.
+
+Das normale Zeitlimit beendet die Einzelprobe vor dem nächsten zu langen Audioframe.
+Auch nach einem Recorder-Abbruch werden geschlossene Audiodateien eingereiht und
+eine Quittung mit dem ursprünglichen Fehlergrund geschrieben. Ein abgebrochener
+Test gilt dadurch nicht als bestandene Empfangsqualifikation. Nach Gateway-Resume
+wird die manuelle Command-Bereitschaft erneut geprüft; es beginnt keine Aufnahme.

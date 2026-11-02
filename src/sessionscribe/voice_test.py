@@ -18,7 +18,16 @@ from urllib.parse import urlsplit
 from pydantic import Field
 
 from .credentials import discord_token
-from .models import Actor, Config, Grant, InferenceSettings, Limits, Snowflake, StrictModel
+from .models import (
+    Actor,
+    Config,
+    Grant,
+    InferenceSettings,
+    Limits,
+    SessionState,
+    Snowflake,
+    StrictModel,
+)
 from .voice import RtpTimeline, RtpTimingDrop
 
 
@@ -120,12 +129,22 @@ class DiskCapture(threading.Thread):
                     frame = self.frames.get(timeout=0.2)
                 except queue.Empty:
                     continue
+                # RTP may lead packet arrival slightly. End at the audio boundary
+                # before Recorder's defensive interruption changes session state.
+                if frame.start_ms + 20 > config.limits.max_duration_ms:
+                    self.stop_requested.set()
+                    break
                 if holder["recorder"].accept(frame):
                     self.frame_count += 1
                     self.nonzero_frames += any(frame.pcm)
                 if holder["recorder"].failure:
                     self.abort(holder["recorder"].failure)
-            controller.stop(actor, session.id)
+            if store.session(session.id).state == SessionState.INTERRUPTED:
+                holder["recorder"].close()
+                if holder["recorder"].chunk_count:
+                    store.enqueue(session.id, "stt")
+            else:
+                controller.stop(actor, session.id)
             self.receipt = {
                 "schema": 1,
                 "session_id": session.id,
@@ -583,6 +602,12 @@ async def listen(policy):
         except Exception:
             ready = False
         health()
+
+    @client.event
+    async def on_resumed():
+        # A resumed gateway does not send READY again. Recheck the one guild
+        # command without starting a capture or replacing global commands.
+        await on_ready()
 
     @client.event
     async def on_disconnect():
