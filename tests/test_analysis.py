@@ -66,6 +66,42 @@ def test_context_overflow_never_truncates_or_calls(transcript):
     assert rig.store.db.execute("SELECT COUNT(*) FROM budgets").fetchone()[0] == 0
 
 
+def test_thinking_is_explicit_and_legacy_snapshots_keep_their_shape(transcript):
+    session = transcript.rig.store.session(transcript.rig.session.id)
+    assert "thinking" not in session.inference.model_dump(mode="json")
+    assert "thinking" not in json.loads(session.inference.model_dump_json())
+    request, before = request_for(session, [transcript.segment])
+    assert "think" not in request
+    planned = session.model_copy(
+        update={"inference": session.inference.model_copy(update={"thinking": "low"})}
+    )
+    request, after = request_for(planned, [transcript.segment])
+    assert request["think"] == "low" and after == before
+    assert session.inference.thinking is None
+
+
+def test_reasoning_only_token_limit_is_not_a_protocol(transcript):
+    rig = transcript.rig
+    before = rig.store.files.read(f"sessions/{rig.session.id}/transcript.json")
+
+    class ReasoningOnly:
+        def chat(self, _request):
+            return {
+                "done": True,
+                "done_reason": "length",
+                "eval_count": 256,
+                "message": {"content": "", "thinking": "Synthetische Überlegungen."},
+            }
+
+    with pytest.raises(ValueError, match="truncated"):
+        evaluate(rig.store, rig.session.id, ReasoningOnly(), enabled=True)
+    assert rig.store.files.read(f"sessions/{rig.session.id}/transcript.json") == before
+    assert not rig.store.protocol_queue()
+    with pytest.raises(FileNotFoundError):
+        rig.control.result(rig.actor, rig.session.id)
+    assert rig.store.db.execute("SELECT calls FROM budgets").fetchone()[0] == 1
+
+
 def test_short_segmented_session_fits_without_losing_evidence(transcript):
     session = transcript.rig.store.session(transcript.rig.session.id)
     session = session.model_copy(

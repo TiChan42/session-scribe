@@ -66,11 +66,15 @@ Die Live-Integration muss `interrupt_recordings()` vor Befehlsannahme aufrufen.
 
 ## Persistenz und Jobs
 
-SQLite-Schema `PRAGMA user_version=4`: `identity`, `sessions`, `jobs`, `budgets`,
-`deliveries`, `job_results` und `protocol_outbox`. WAL und synchronous FULL; nur lokale Dateisysteme.
+SQLite-Schema `PRAGMA user_version=5`: `identity`, `sessions`, `jobs`, `budgets`,
+`deliveries`, `job_results`, `protocol_outbox`, `analysis_plans` und `retired_jobs`.
+WAL und synchronous FULL; nur lokale Dateisysteme.
 Version 0 wird initialisiert, konforme Altversionen transaktional migriert,
 unbekannte Versionen werden abgelehnt. Vor produktiven Migrationen konsistentes
 Backup anlegen; Details und Rückweg im [Broker-Vertrag](BROKER.md).
+Vor der Migration bestehender Stores erstellt der Prozess zusätzlich ein
+konsistentes privates SQLite-Backup. Reicht die Diskreserve dafür nicht, beginnt
+die Migration nicht. Diese lokale Kopie ersetzt kein externes Backup.
 
 Sitzung: waiting_consent → recording ↔ paused → stopped; Prozessausfall führt
 zu interrupted. Gelöschte Sitzungen werden während der Dateibereinigung gesperrt;
@@ -122,6 +126,14 @@ noch nicht implementiert; Konfiguration erlaubt bewusst nur `reject`.
 Der Request verwendet kompaktes JSON und bindet alle Segmente an die einmal
 genannte Session-ID. Quell-IDs, Sprecher, Zeitangaben, Lücken und Text bleiben
 vollständig erhalten; fremde Session-IDs werden vor der Serialisierung abgewiesen.
+Eine neue Auswertung eines endgültig fehlgeschlagenen Jobs erhält eine neue
+Job-ID und einen unveränderlichen Analyseplan. Der Aufnahme-Snapshot und das
+Transkript bleiben erhalten; der alte Job wird mit seinen Fehlern und Versuchen
+transaktional archiviert. Modellwechsel, laufende Jobs und bestehende Protokoll-
+oder Versandbelege verhindern diesen Neustart. Pro Sitzung sind acht solche
+Neustarts möglich; die autoritativen Guild-/Globalbudgets des Gateways gelten weiter.
+Evaluator-Zustand ist je Guild und logischem Job getrennt; Retries desselben Jobs
+verwenden denselben Zustand. Ein Planwechsel verändert keinen laufenden Auftrag.
 
 Kein Tool-Feld, keine Befehlsausführung, keine dynamischen Modell-/HTTP-Routen.
 JSON-Schema, Mandant, Session, Quellen, explizite Zuständigkeits-/Fristbelege

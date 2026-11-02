@@ -133,11 +133,21 @@ oder individuelle Zustimmung. Geteilte Mikrofone identifizieren keine Einzelpers
 
 Je Guild und Phase disjunkte inbox/outbox/cache-Wurzeln, eigener Store und ein
 gemeinsamer globaler STT-Lock und separater globaler Auswertungs-Lock. Host-Broker, fester Supervisor und Rechteübergaben sind im Infrastrukturprojekt
-synthetisch geprüft; Service-Units/ACL-Apply und Linux-Abnahme bleiben offen. Queue-Schema 4, Guild-Konfigurationsschema 2
+synthetisch geprüft; eine Linux-Abnahme bleibt erforderlich. Queue-Schema 5, Guild-Konfigurationsschema 2
 und Handoff-Schema 1 müssen
 zur Revision passen. Alte Entwicklungsstores mit Modus als Mandanten-ID werden
 nicht automatisch einer erfundenen Guild zugeordnet. Sie bleiben unverändert zur
 expliziten Migration/Archivierung erhalten. Siehe [Broker-Vertrag](BROKER.md).
+
+`inference.thinking` ist optional und nimmt `low`, `medium`, `high`, `xhigh` oder
+`max` an. Ohne Wert bleiben alte Snapshots und Requests unverändert. Der Operator
+muss die Unterstützung beim freigegebenen Modell prüfen; die verfügbaren Werte
+lassen sich laut [Ollama-Dokumentation](https://docs.ollama.com/capabilities/thinking)
+über `/api/show` ermitteln. Fehlende Metadaten sind kein Unterstützungsnachweis.
+Ein endgültig fehlgeschlagener Analysejob kann über die berechtigte Controller-API
+mit einem neuen, dokumentierten Plan neu angesetzt werden. Dabei bleiben Modell,
+Originalaufnahme und Rohtranskript erhalten; Limits müssen zum Gateway passen.
+Die Live-Discord-Verarbeitung bleibt von der separaten Qualifikationsfreigabe abhängig.
 
 Aufnahme-Helfer benötigen für ihre zugewiesenen Sprachkanäle Kanalansicht und
 Verbinden; sie benötigen keine Administrationsrechte, TTS oder LLM-Zugänge. Der

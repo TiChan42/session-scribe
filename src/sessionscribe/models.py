@@ -31,6 +31,10 @@ class InferenceSettings(StrictModel):
     output_tokens: int = Field(ge=256, le=16384)
     overhead_tokens: int = Field(default=512, ge=256)
     temperature: float = Field(default=0.0, ge=0, le=1)
+    # Omitted legacy controls retain their original serialized snapshot and request.
+    thinking: Literal["low", "medium", "high", "xhigh", "max"] | None = Field(
+        default=None, exclude_if=lambda value: value is None
+    )
     split_mode: Literal["reject"] = "reject"
 
     @model_validator(mode="after")

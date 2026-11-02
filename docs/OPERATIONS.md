@@ -127,6 +127,14 @@ Starterprozesses reicht nicht: Runner muss alle Worker-/Hilfsprozesse abgleichen
 Bei unklarer Beendigung bleibt der Job running; keine manuelle Lease-Freigabe,
 bevor die alte Cgroup nachweislich leer ist.
 
+Schema 5 ergänzt Analysepläne und archivierte Fehlversuche. Die Migration erzeugt
+vor ihrer Transaktion ein konsistentes privates DB-Backup und prüft den Platz
+dafür. Vor der Auslieferung alle alten Store-Prozesse geordnet stoppen und den
+Backupstand prüfen. Ältere Images können Schema 5 nicht öffnen; ein Rückweg
+benötigt den passenden Gesamtstand und einen Abgleich bereits versandter Protokolle.
+Ein neuer Analyseplan ist nur nach endgültigem Fehlschlag ohne Ergebnis/Versand
+zulässig. Keine Retry-Zähler, Aufnahme-Einstellungen oder alte Snapshots ändern.
+
 Crash vor Ergebnis-Commit: rohe Versuchsdateien sind ohne gültigen DB-Zeiger
 nicht abgeschlossen. Validierte STT-Checkpoints können nach Beendigung erneut
 verwendet werden. Veränderte Session-/Modell-/Transkript-Snapshots werden bei
@@ -147,7 +155,7 @@ Stop schließt und queued lokale Audios ohne Cloud-Abhängigkeit. Hintergrund-
 Scheduler arbeitet Guild-Queues fair ab; STT bleibt global seriell. Erst validierte
 LLM-Resultate erzeugen Protokoll-Outbox-Einträge. Pending/Sending-Outbox blockiert
 umlenkende Konfigurationsänderungen. Uncertain-Sendungen manuell abgleichen.
-Schema 4 und Guild-Konfigurationsschema 2 sind bei Readiness/Restore zu beachten.
+Schema 5 und Guild-Konfigurationsschema 2 sind bei Readiness/Restore zu beachten.
 Native Aufnahme-/IPC-/Token-/Bot-Pool-Integration und echte Versandtests sind offen.
 
 ## Native Adaptervorbereitung

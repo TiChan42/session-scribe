@@ -10,6 +10,13 @@ verwendet die SQLite-Backup-API, sodass ein einzelnes DB-Abbild auch mit WAL
 konsistent ist. Dieses Abbild allein enthält keine Audio-/Ergebnisdateien und
 ersetzt keinen quieszierten Gesamtsnapshot.
 
+Schema 5 umfasst auch `analysis_plans` und `retired_jobs`; diese Tabellen gehören
+zum konsistenten DB-Abbild. Lokale Migrationskopien in `migration-backups/` sind
+privat zu behandeln und ersetzen kein verschlüsseltes externes Backup. Ein
+Downgrade auf einen Stand vor Schema 5 erfordert dessen passenden DB-/Dateistand.
+Vor einer erneuten Veröffentlichung nach Restore bereits vorhandene Discord-
+Nachrichten und Zustellbelege abgleichen; Quotenledger nicht zurücksetzen.
+
 Je Mandant getrennt sichern: Recorder-Dateibaum und konsistente DB, Evaluator-
 Zustand/Budget, vollständige Handoffs und Checkpoints, committierte `results/`-Bäume samt `job_results`-Tabelle,
 Konfiguration, Runtime-
@@ -17,6 +24,8 @@ Secrets über getrennten geschützten Weg sowie Revision und OCI-Digests. Den
 read-only STT-Modellcache kann man anhand gepinnter Revision/Hashes erneut aufbauen.
 Backups dürfen keine Symlinks in fremde Mandanten verfolgen. Metadaten und Rechte
 bewahren; verschlüsselt außerhalb des Hosts ablegen und Erfolg/Alter überwachen.
+Evaluator-Zustand wird je Guild und logischem Job gesichert. Das unabhängige
+Gateway-Ledger enthält die autoritativen kumulierten Guild-/Globalbudgets.
 
 Restore zunächst in leere private Testverzeichnisse ohne ausgehendes Netz und
 ohne echte Tokens. Passende Quell-/Imageversion und Schema prüfen; gesicherte

@@ -249,3 +249,19 @@ Caller-Disconnect, fairen Wechsel zwischen STT/Analyse und die Übernahme eines
 fertigen, noch geleasten Versuchs ohne neuen Worker. Sie beweisen keine echten
 Root-Dateirechte oder Linux-Cgroups. Zusätzlich stimmen die Hashes einer identischen
 synthetischen Inferenzanfrage zwischen Python 3.12 und 3.14 überein.
+
+## Analysepläne und Denkbudget
+
+Synthetische Tests prüfen, dass eine reine Denkantwort mit `done_reason=length`
+kein Protokoll erzeugt und verbrauchtes Budget reserviert bleibt. Ein expliziter
+Neustart eines toten Analysejobs muss Original-Snapshot und Transkript erhalten,
+Fehlversuche archivieren und eine neue Job-ID mit festem Plan anlegen. Geänderte
+Quellen, fremde Eigentümer, Modellwechsel und vorhandene Versandbelege verhindern
+unerlaubte Neustarts. Löschtests erfassen auch archivierte Ergebnisverzeichnisse.
+Der Hostkern prüft Schema-4-Backup, Konsistenz und unveränderte Sitzungsdaten vor
+Schema 5 getrennt von Recorder-/Modellabhängigkeiten.
+
+Für einen freigegebenen Live-Modelltest Denksteuerung und Antwortbudget explizit
+festlegen. Falls Modellmetadaten fehlen, Unterstützung nicht voraussetzen.
+Abschlussgrund, Inhalt, Quellenbelege und Inferenzmetadaten tatsächlich prüfen;
+ein erfolgreicher HTTP-Status oder vorhandener Denktext beweist kein Protokoll.

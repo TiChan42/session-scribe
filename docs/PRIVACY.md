@@ -9,7 +9,8 @@ Audio bleibt lokal. Ein ausdrücklich freigegebener Inferenzzugang sendet das
 Transkript einschließlich Sprecherkennungen und gegebenenfalls Charakterzuordnung
 an den Cloud-Anbieter. Vor Aktivierung sind Teilnehmerinformation, Vertraulichkeit,
 Anbieterbedingungen, Speicherorte und vereinbarte Löschfristen zu klären.
-Es gab bisher keine reale Aufnahme und keinen Cloud-Call dieser Anwendung.
+Reale Aufnahmen und Cloud-Auswertungen benötigen eigene Freigaben und private
+Betriebsnachweise; synthetische Tests ersetzen diese Nachweise nicht.
 
 Eine Discord-ID kennzeichnet eine Verbindung; bei gemeinsamem Mikrofon sind
 Menschen nicht zuverlässig unterscheidbar. Keine Voiceprints, Embeddings oder
@@ -69,6 +70,14 @@ Job-Credentials sind kurzlebig und nur für eine exakt gebundene Anfrage gültig
 Das separate Quotaledger speichert Kontingente und verbrauchte Credential-Hashes,
 keine Transkripte oder Modellantworten. Es muss privat gesichert werden; ein
 Neustart darf Verbrauch oder Einmalverwendung nicht zurücksetzen.
+
+Analyse-Neustarts erhalten einen neuen gebundenen Auftrag. Der Aufnahme-Snapshot
+und das Rohtranskript werden dabei nicht umgeschrieben. Frühere Fehlversuche und
+deren Einstellungen bleiben privat nachvollziehbar; die Session-Löschung entfernt
+auch diese Historie und die zugehörigen Ergebnisverzeichnisse. Migrationsbackups
+enthalten historische Metadaten und benötigen eine eigene Backup-Aufbewahrung.
+Inferenzmetadaten können Tokenzahlen und die Länge der Denkphase enthalten;
+der separate Denkkanal wird weder gespeichert noch veröffentlicht.
 ## Manuelle Empfangsprobe
 
 Der Betreiber kann einen Einzeltest für eine ausdrücklich zustimmende Person

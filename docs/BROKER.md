@@ -99,23 +99,38 @@ Lösch- oder Quotenvergrößerungsmechanismus.
 
 ## SQLite-Migration
 
-Schema 4 verwendet numerische Guild-IDs und einen getrennten Modus; es enthält `job_results` mit Foreign Key auf `jobs` und Löschkaskade.
-Die Initialisierung/Migration von 1 auf 4 läuft in einer SQLite-Transaktion;
+Schema 5 verwendet numerische Guild-IDs und einen getrennten Modus; es enthält
+`job_results` mit Foreign Key auf `jobs` und Löschkaskade sowie Analysepläne und
+archivierte fehlgeschlagene Jobs.
+Die Initialisierung/Migration konformer Altversionen auf 5 läuft in einer SQLite-Transaktion;
 vorhandene Sitzungen, Jobs, Budgets und Zustellungsbelege bleiben erhalten.
 Unbekannte Schema-Versionen werden abgelehnt. Vor einem späteren produktiven
 Versionswechsel konsistentes Backup anlegen. Kein automatisches Downgrade;
 ältere Images benötigen gegebenenfalls ihren passenden vollständigen Backupstand.
+Vor einer Migration legt der Store eine private konsistente Kopie unter
+`migration-backups/schema-<version>-before-5-<id>.sqlite3` an. Eine neue Kopie je
+Migrationsversuch verhindert das Überschreiben eines früheren Wiederherstellungspunkts.
+Mandantenprüfung und Platzreserve gehen der Migration voraus.
 
 Stores früherer Entwicklungsstände mit `meeting`/`dnd` oder dem damaligen
 Modusnamen als Tenant und ohne separate Modus-Metadaten werden abgelehnt. Ohne
-explizite Guild-Zuordnung darf keine automatische Umhängung stattfinden. Es gab
-bisher keine produktiven Daten dieser Anwendung.
+explizite Guild-Zuordnung darf keine automatische Umhängung oder Umdeutung
+vorhandener Daten stattfinden.
 
 Nach dem LLM-Commit wird bei konfiguriertem Ziel atomar die Protokoll-Outbox
 angelegt. Sie ist von der Aufnahme getrennt. STT-Aufträge entstehen nach Stop
 automatisch für Sitzungen mit Audio; manuelles process ist idempotent. Schema 4
 ergänzt Outbox und eindeutige aktive Voice-/Bot-Belegung; bestehende Sessions
 ohne Protokollziel werden nicht rückwirkend veröffentlicht.
+
+Ein neuer Analyseplan ist ein eigener logischer Auftrag, kein Zurücksetzen eines
+Retry-Zählers. Nur ein toter Analysejob ohne Ergebnis- oder Versandbeleg darf
+ersetzt werden. Archivierung, neue Job-ID und Plan werden gemeinsam committed.
+Der Plan bindet den unveränderten Aufnahme-Snapshot per SHA256 und speichert die
+gewählten Inferenzlimits und optionale Denkstufe. Ändert sich die Quelle oder der
+Plan während der Verarbeitung, wird kein Ergebnis committed. Evaluator-Caches
+sind je Guild und Job getrennt; das Gateway begrenzt alle Aufträge derselben Guild
+weiter gemeinsam. Löschen berücksichtigt auch archivierte Job-IDs und Ergebnisse.
 
 ## Nativer Adapter und Inferenztransport
 
