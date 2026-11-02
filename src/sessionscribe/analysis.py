@@ -194,7 +194,7 @@ def _validate_mermaid(diagram: str) -> None:
         raise ValueError("unsupported Mermaid diagram")
     ids = set()
     for line in lines[1:]:
-        node = re.fullmatch(r'([A-Z])\["([^"<>\[\]{}]{1,160})"\]', line)
+        node = re.fullmatch(r'([A-Z])\["([^"`|<>\[\]{}]{1,160})"\]', line)
         edge = re.fullmatch(r"([A-Z])\s+-->\s+([A-Z])", line)
         if node:
             ids.add(node.group(1))
