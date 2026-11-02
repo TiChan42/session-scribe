@@ -210,6 +210,11 @@ Teilnehmerwechsel, fremde SSRC/Nutzer, fehlende Entschlüsselung und fehlerhafte
 PCM-/RTP-Daten. Diese Tests verwenden keine echte Stimme und ersetzen keinen
 erneuten autorisierten Discord-Test.
 
+Grenztests prüfen das normale Ende am Audiozeitlimit sowie einen Recorder-Abbruch
+nach bereits geschriebenem Audio: Quittung, Fehlergrund und Queue bleiben erhalten.
+Ein weiterer Test simuliert Disconnect und Resume des manuellen Listeners und
+verlangt neue Command-Bereitschaft ohne automatischen Aufnahmestart.
+
 RTP-Zeitstempel repräsentieren die Abtastzeit, keine Empfangsgarantie; ihre
 Reihenfolge und Paketankunft können abweichen ([RFC 3550](https://www.rfc-editor.org/rfc/rfc3550.html)).
 

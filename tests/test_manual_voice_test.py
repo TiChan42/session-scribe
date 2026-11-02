@@ -1,4 +1,5 @@
 import asyncio
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
@@ -68,6 +69,16 @@ def test_listener_registers_without_recording_then_only_explicit_callback_runs(
         async def start(_token):
             await client.on_ready()
             backend.assert_not_awaited()
+            await client.on_disconnect()
+            assert (
+                json.loads((tmp_path / "listener-health.json").read_text())["command_ready"]
+                is False
+            )
+            await client.on_resumed()
+            assert (
+                json.loads((tmp_path / "listener-health.json").read_text())["command_ready"] is True
+            )
+            backend.assert_not_awaited()
             command = next(
                 c for c in client.pending_application_commands if c.name == "testaufnahme"
             )
@@ -80,7 +91,7 @@ def test_listener_registers_without_recording_then_only_explicit_callback_runs(
 
         client.start = start
         await voice_test.listen(policy())
-        client.http.upsert_guild_command.assert_awaited_once()
+        assert client.http.upsert_guild_command.await_count == 2
         assert client.http.upsert_guild_command.call_args.args[1] == 1000
 
     asyncio.run(scenario())
