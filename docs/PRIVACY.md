@@ -1,13 +1,23 @@
 # Daten, Zustimmung und Aufbewahrung
 
-Aufnahme beginnt erst nach explizitem Start, Zustimmung aller aktuellen Teilnehmer
-und sichtbar bestätigtem Aufnahmestatus. Beitritt pausiert; Neustart/Disconnect
-muss unterbrechen. Keine heimliche Fortsetzung. Jede teilnehmende Person kann
-lokal stoppen. Transport und Betrieb müssen dies zusätzlich praktisch testen.
+Eine Sitzung wartet nach dem Start auf sichtbare Bereitschaft und ausdrückliche
+Aufnahmezustimmung jeder aktuell anwesenden Person. `/alias` fragt diese zusammen
+mit dem selbst gewählten Namen ab. Ein gespeicherter Name ist keine Zustimmung:
+die Entscheidung gilt nur für die aktive Sitzung. Ein neuer Beitritt, eine
+Ablehnung, ein widerrufener Alias oder ein verlorener Voice-Status pausiert die
+Aufnahme; Resume erfordert eine frische Belegungsprüfung und vollständige Alias-
+und Zustimmungsabdeckung. Bei fehlender Zustimmung erinnert der Befehlschat
+minütlich an `/alias` oder `/stop`. Keine heimliche Fortsetzung. Jede
+teilnehmende Person kann lokal stoppen. Transport und Betrieb müssen dies
+zusätzlich praktisch testen.
+`/revoke` zieht Aufnahme- und Cloudzustimmung zurück und pausiert eine laufende
+Aufnahme.
 
 Audio bleibt lokal. Ein ausdrücklich freigegebener Inferenzzugang sendet das
-Transkript einschließlich Sprecherkennungen und gegebenenfalls Charakterzuordnung
-an den Cloud-Anbieter. Vor Aktivierung sind Teilnehmerinformation, Vertraulichkeit,
+Transkript mit Aliasnamen und gegebenenfalls Charakterzuordnung an den
+Cloud-Anbieter. Rohe Discord-IDs werden aus dem Modellrequest entfernt. Die
+lokale Sitzung hält die Zuordnung zwischen ID und Alias für Quellenbindung und
+Protokollrendering. Vor Aktivierung sind Teilnehmerinformation, Vertraulichkeit,
 Anbieterbedingungen, Speicherorte und vereinbarte Löschfristen zu klären.
 Reale Aufnahmen und Cloud-Auswertungen benötigen eigene Freigaben und private
 Betriebsnachweise; synthetische Tests ersetzen diese Nachweise nicht.
@@ -17,6 +27,13 @@ Menschen nicht zuverlässig unterscheidbar. Keine Voiceprints, Embeddings oder
 mandantenübergreifende Suche. Guilds erhalten getrennte beschreibbare Sitzungsspeicher und Budgets; Meeting
 und DnD sind Modi derselben Bot-Identität. Der gemeinsame Recorder kennt seine
 Guilds, nachgelagerte Worker erhalten nur einzelne Guild-Handoffs.
+Aliasprofile liegen in `guild-config.sqlite3`, getrennt nach Guild, Sprachkanal
+und Discord-ID. Sie bleiben bis zum persönlichen `/alias-delete` erhalten und
+müssen daher von privaten Backups/Löschverfahren erfasst werden. `/alias-delete`
+ändert bereits abgeschlossene Session-Snapshots und veröffentlichte Protokolle
+nicht. Protokolle
+enthalten Aliasnamen; diese können weiterhin eine Person innerhalb der Guild
+erkennbar machen.
 
 ## Retention-Vorschlag, noch nicht aktiviert
 

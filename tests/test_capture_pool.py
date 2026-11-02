@@ -68,7 +68,14 @@ def capture_cases(tmp_path):
 
 
 def begin(pool, case, channel):
-    s = pool.start(case.control, case.actor, channel, frozenset({case.actor.user_id}))
+    s = pool.start(
+        case.control,
+        case.actor,
+        channel,
+        frozenset({case.actor.user_id}),
+        speaker_aliases={case.actor.user_id: "Ada"},
+    )
+    case.control.alias_consent(case.actor, s.id, "Ada", accepted=True)
     case.control.consent(case.actor, s.id, cloud=True)
     return case.control.resume(case.actor, s.id)
 

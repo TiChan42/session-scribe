@@ -30,6 +30,7 @@ def context(user=1003, guild_id=1000, channel_id=1002, permissions=32):
     guild = SimpleNamespace(id=guild_id)
     author = Mock(spec=discord.Member)
     author.id, author.guild, author.roles = user, guild, []
+    author.voice = None
     author.guild_permissions = discord.Permissions(permissions)
     return SimpleNamespace(
         guild=guild,

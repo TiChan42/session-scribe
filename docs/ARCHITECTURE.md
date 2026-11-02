@@ -81,6 +81,17 @@ zu interrupted. Gelöschte Sitzungen werden während der Dateibereinigung gesper
 anschließend werden Metadaten und Queue-Einträge entfernt. Fehlerhafte Bereinigung
 ist wiederholbar. Löschung entfernt keine früheren Backups/Discord-Ausgaben.
 
+Der aktuelle Discord-Voice-Status bestimmt die Teilnehmermenge. `/alias` bindet
+die authentifizierte User-ID an einen eigenen Kanal-Alias und setzt zugleich die
+Aufnahmezustimmung für diese Sitzung. Aliasprofile bleiben pro Guild/Voice-
+Kanal in der Konfigurationsdatenbank; die Sitzungszustimmung bleibt auf genau
+diese Session beschränkt und wird nie in eine spätere kopiert. Ein neuer Teilnehmer setzt die Session
+auf `paused`, schließt die Aufnahmedatei und startet einen minütlichen Hinweis
+im ursprünglichen Befehlschat. Resume liest vor der Freigabe erneut die Discord-
+Belegung und prüft alle Alias-/Zustimmungsbindungen. Aufzeichnung beginnt erst
+nach sichtbarer Statusquittung; Fehler, Disconnect und manuelle Pause starten
+nicht automatisch erneut.
+
 Job: pending → running → succeeded. Fehler/Lease-Ablauf führen mit Backoff zu
 pending, nach drei Versuchen zu dead. Atomare Übernahme mit Zufallstoken und
 Lease; veraltete Tokens können nicht abschließen. Enqueue ist pro Sitzung/Phase
@@ -155,7 +166,7 @@ Ein echter Zustelltest in einer autorisierten Testguild steht aus.
 
 ## Guild-Konfiguration
 
-Konfigurationsschema 2 ist getrennt von den Sitzungsspeichern. `/setup` und
+Konfigurationsschema 3 (inklusive Aliasprofile) ist getrennt von den Sitzungsspeichern. `/setup` und
 `/config` erfordern verifizierte Manage-Guild-Berechtigung der handelnden Person.
 Kanäle/Rollen müssen der aktuellen Guild gehören; Datenwurzeln kommen nie aus
 Commands. Eine Guild-Sperre serialisiert Konfiguration und Steuerung. Aktive

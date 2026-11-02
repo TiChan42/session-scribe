@@ -14,6 +14,7 @@ from typing import Literal
 
 from pydantic import Field, TypeAdapter
 
+from .aliases import validate_alias
 from .control import Controller, Denied
 from .files import SafeFiles
 from .models import (
@@ -37,6 +38,7 @@ ACTIONS = ("start", "resume", "pause", "stop", "status", "process", "result", "d
 
 class AdminActor(Actor):
     permissions: int = Field(ge=0)
+    voice_channel_id: Snowflake | None = None
 
     def authorize_setup(self):
         if not self.permissions & (MANAGE_GUILD | ADMINISTRATOR):
@@ -79,14 +81,20 @@ class GuildDirectory:
         self.db = sqlite3.connect(path, isolation_level=None, timeout=5)
         os.chmod(path, 0o600)
         version = self.db.execute("PRAGMA user_version").fetchone()[0]
-        if version not in (0, 1, 2):
+        if version not in (0, 1, 2, 3):
             self.db.close()
             raise ValueError("unsupported guild configuration schema")
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=FULL")
         self.db.execute("""CREATE TABLE IF NOT EXISTS configurations (
             guild_id TEXT PRIMARY KEY, revision INTEGER NOT NULL, body TEXT NOT NULL)""")
-        self.db.execute("PRAGMA user_version=2")
+        self.db.execute("""CREATE TABLE IF NOT EXISTS voice_aliases (
+            guild_id TEXT NOT NULL,
+            voice_channel_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            alias TEXT NOT NULL,
+            PRIMARY KEY(guild_id, voice_channel_id, user_id))""")
+        self.db.execute("PRAGMA user_version=3")
 
     def configuration(self, guild_id: str) -> tuple[Config, int]:
         guild_id = TypeAdapter(Snowflake).validate_python(guild_id, strict=True)
@@ -103,6 +111,79 @@ class GuildDirectory:
     def store(self, guild_id: str) -> Store:
         self.configuration(guild_id)
         return Store(self.files.root / "guilds" / guild_id, guild_id)
+
+    def voice_aliases(self, guild_id: str, voice_channel_id: str) -> dict[str, str]:
+        guild_id = TypeAdapter(Snowflake).validate_python(guild_id, strict=True)
+        voice_channel_id = TypeAdapter(Snowflake).validate_python(voice_channel_id, strict=True)
+        config, _revision = self.configuration(guild_id)
+        if voice_channel_id not in config.voice_channel_ids:
+            raise Denied("voice channel is not configured for this guild")
+        rows = self.db.execute(
+            "SELECT user_id,alias FROM voice_aliases WHERE guild_id=? AND voice_channel_id=?",
+            (guild_id, voice_channel_id),
+        ).fetchall()
+        result = {user_id: validate_alias(alias) for user_id, alias in rows}
+        if len({alias.casefold() for alias in result.values()}) != len(result):
+            raise ValueError("duplicate stored voice aliases")
+        return result
+
+    def set_voice_alias(
+        self, guild_id: str, voice_channel_id: str, user_id: str, alias: str
+    ) -> str:
+        guild_id = TypeAdapter(Snowflake).validate_python(guild_id, strict=True)
+        voice_channel_id = TypeAdapter(Snowflake).validate_python(voice_channel_id, strict=True)
+        user_id = TypeAdapter(Snowflake).validate_python(user_id, strict=True)
+        alias = validate_alias(alias)
+        config, _revision = self.configuration(guild_id)
+        if voice_channel_id not in config.voice_channel_ids:
+            raise Denied("voice channel is not configured for this guild")
+        with self.transaction():
+            existing = self.db.execute(
+                """SELECT user_id,alias FROM voice_aliases
+                WHERE guild_id=? AND voice_channel_id=?""",
+                (guild_id, voice_channel_id),
+            ).fetchall()
+            if any(
+                other_user != user_id and existing_alias.casefold() == alias.casefold()
+                for other_user, existing_alias in existing
+            ):
+                raise Conflict("alias already used in this voice channel")
+            self.db.execute(
+                """INSERT INTO voice_aliases(guild_id,voice_channel_id,user_id,alias)
+                VALUES (?,?,?,?)
+                ON CONFLICT(guild_id,voice_channel_id,user_id)
+                DO UPDATE SET alias=excluded.alias""",
+                (guild_id, voice_channel_id, user_id, alias),
+            )
+        return alias
+
+    def delete_voice_alias(self, guild_id: str, voice_channel_id: str, user_id: str) -> bool:
+        guild_id = TypeAdapter(Snowflake).validate_python(guild_id, strict=True)
+        voice_channel_id = TypeAdapter(Snowflake).validate_python(voice_channel_id, strict=True)
+        user_id = TypeAdapter(Snowflake).validate_python(user_id, strict=True)
+        config, _revision = self.configuration(guild_id)
+        if voice_channel_id not in config.voice_channel_ids:
+            raise Denied("voice channel is not configured for this guild")
+        with self.transaction():
+            result = self.db.execute(
+                """DELETE FROM voice_aliases WHERE guild_id=? AND voice_channel_id=?
+                AND user_id=?""",
+                (guild_id, voice_channel_id, user_id),
+            )
+        return result.rowcount == 1
+
+    @contextlib.contextmanager
+    def transaction(self):
+        self.db.execute("BEGIN IMMEDIATE")
+        try:
+            yield
+        except BaseException:
+            if self.db.in_transaction:
+                self.db.rollback()
+            raise
+        else:
+            if self.db.in_transaction:
+                self.db.commit()
 
     def setup(self, actor: AdminActor, options: Setup) -> Config:
         actor.authorize_setup()

@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 
 COMMANDS = (
     "start",
+    "alias",
+    "alias-delete",
     "consent",
     "revoke",
     "pause",
@@ -47,6 +49,31 @@ def definitions() -> list[dict]:
                     "required": True,
                 }
             ]
+        elif name == "alias":
+            command["options"] = [
+                {
+                    "name": "recording_consent",
+                    "description": "Stimme dieser konkreten Sitzung ausdrücklich zu oder lehne ab",
+                    "type": 3,
+                    "required": True,
+                    "choices": [
+                        {"name": "Ich stimme zu", "value": "accept"},
+                        {"name": "Ich stimme nicht zu", "value": "decline"},
+                    ],
+                },
+                {
+                    "name": "alias",
+                    "description": (
+                        "Dein Name im Protokoll; leer übernimmt deinen gespeicherten Alias"
+                    ),
+                    "type": 3,
+                    "required": False,
+                    "min_length": 1,
+                    "max_length": 32,
+                },
+            ]
+        elif name == "alias-delete":
+            continue
         elif name not in ("queue", "status"):
             command["options"] = [
                 {
@@ -82,18 +109,32 @@ class CommandRouter:
         session_id: str | None = None,
         voice_channel_id: str | None = None,
         participants: frozenset[str] = frozenset(),
+        speaker_aliases: dict[str, str] | None = None,
         cloud_consent: bool = False,
     ):
         if name not in COMMANDS:
             raise ValueError("unknown command")
         if name == "start":
             if self.recordings is not None:
-                return self.recordings.start(self.control, actor, voice_channel_id, participants)
-            return self.control.start(actor, voice_channel_id, participants)
+                return self.recordings.start(
+                    self.control,
+                    actor,
+                    voice_channel_id,
+                    participants,
+                    speaker_aliases=speaker_aliases,
+                )
+            return self.control.start(
+                actor,
+                voice_channel_id,
+                participants,
+                speaker_aliases=speaker_aliases,
+            )
         if name == "queue":
             return self.control.queue(actor)
         if name == "status":
             return self.control.status_for(actor)
+        if name in ("alias", "alias-delete"):
+            raise ValueError("self-bound aliases require the authenticated Discord control service")
         if session_id is None:
             raise ValueError("session ID required")
         if name == "consent":

@@ -41,7 +41,12 @@ def rig(tmp_path):
     control = Controller(config, store, status, lambda _sid: holder["recorder"].close())
     actor = Actor(guild_id="1000", channel_id="1002", user_id="1001")
     other = actor.model_copy(update={"user_id": "1005"})
-    session = control.start(actor, "1003", frozenset({actor.user_id, other.user_id}))
+    session = control.start(
+        actor,
+        "1003",
+        frozenset({actor.user_id, other.user_id}),
+        speaker_aliases={actor.user_id: "Ada", other.user_id: "Ben"},
+    )
     recorder = Recorder(store, session.id, config.limits)
     holder["recorder"] = recorder
     yield SimpleNamespace(
@@ -59,7 +64,8 @@ def rig(tmp_path):
 
 
 def start(rig):
-    for actor in (rig.actor, rig.other):
+    for actor, alias in ((rig.actor, "Ada"), (rig.other, "Ben")):
+        rig.control.alias_consent(actor, rig.session.id, alias, accepted=True)
         rig.control.consent(actor, rig.session.id, cloud=True)
     return rig.control.resume(rig.actor, rig.session.id)
 

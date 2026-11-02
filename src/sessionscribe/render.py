@@ -4,7 +4,7 @@ import re
 from typing import Protocol
 
 from .analysis import validate_analysis
-from .models import Analysis, Config
+from .models import Analysis, Config, Segment
 from .store import Conflict, Store
 from .transcript import load_transcript
 
@@ -16,13 +16,39 @@ def safe_text(text: str) -> str:
     return re.sub(r"([\\`*_{}\[\]()<>#!|~])", r"\\\1", text)
 
 
-def render_analysis(result: Analysis) -> str:
+def _alias_roster(speaker_aliases: dict[str, str] | None) -> list[str]:
+    if not speaker_aliases:
+        return []
+    labels = sorted(set(speaker_aliases.values()), key=str.casefold)
+    return ["## Sprecher-Aliase", "", *[f"- {safe_text(label)}" for label in labels], ""]
+
+
+def _source_references(
+    source_ids: list[str],
+    speaker_aliases: dict[str, str] | None,
+    segments: list[Segment] | None,
+) -> str:
+    segment_by_id = {segment.id: segment for segment in segments or []}
+    rendered = []
+    for source_id in source_ids:
+        segment = segment_by_id.get(source_id)
+        alias = (speaker_aliases or {}).get(segment.speaker_id) if segment else None
+        rendered.append(f"{source_id} ({safe_text(alias)})" if alias else source_id)
+    return ", ".join(rendered)
+
+
+def render_analysis(
+    result: Analysis,
+    speaker_aliases: dict[str, str] | None = None,
+    segments: list[Segment] | None = None,
+) -> str:
     lines = [
         f"# SessionScribe {'Meeting' if result.mode == 'meeting' else 'DnD'}",
         "",
         "Automatischer Entwurf – Quellen prüfen.",
         "",
     ]
+    lines.extend(_alias_roster(speaker_aliases))
     for finding in result.findings:
         lines += [
             f"## {finding.kind}",
@@ -31,7 +57,7 @@ def render_analysis(result: Analysis) -> str:
             "",
             "Begründung: " + safe_text(finding.rationale),
             "",
-            "Quellen: " + ", ".join(finding.sources),
+            "Quellen: " + _source_references(finding.sources, speaker_aliases, segments),
             "",
         ]
         if finding.kind == "task":
@@ -51,7 +77,11 @@ def render_analysis(result: Analysis) -> str:
     return "\n".join(lines)
 
 
-def render_interpretation(result: Analysis) -> str:
+def render_interpretation(
+    result: Analysis,
+    speaker_aliases: dict[str, str] | None = None,
+    segments: list[Segment] | None = None,
+) -> str:
     lines = [
         f"# Interpretierte Zusammenfassung – {'Meeting' if result.mode == 'meeting' else 'DnD'}",
         "",
@@ -62,10 +92,16 @@ def render_interpretation(result: Analysis) -> str:
         safe_text(result.interpretation.summary),
         "",
     ]
+    lines.extend(_alias_roster(speaker_aliases))
     if result.interpretation.issues:
         lines += ["## Problematische oder unklare Stellen", ""]
         for issue in result.interpretation.issues:
-            lines += [safe_text(issue.text), "", "Quellen: " + ", ".join(issue.sources), ""]
+            lines += [
+                safe_text(issue.text),
+                "",
+                "Quellen: " + _source_references(issue.sources, speaker_aliases, segments),
+                "",
+            ]
     else:
         lines += ["## Problematische oder unklare Stellen", "", "Keine erkannt.", ""]
     if result.interpretation.mermaid:
@@ -98,12 +134,13 @@ def _publish(
         or channel_id != s.protocol_channel_id
     ):
         raise PermissionError("protocol channel denied or posting disabled")
-    result = validate_analysis(
-        store.artifact(sid, "analysis.json").decode(), s, load_transcript(store, sid)
-    )
+    segments = load_transcript(store, sid)
+    result = validate_analysis(store.artifact(sid, "analysis.json").decode(), s, segments)
     files = {
-        "protokoll-begruendet.md": render_analysis(result).encode(),
-        "protokoll-interpretiert.md": render_interpretation(result).encode(),
+        "protokoll-begruendet.md": render_analysis(result, s.speaker_aliases, segments).encode(),
+        "protokoll-interpretiert.md": render_interpretation(
+            result, s.speaker_aliases, segments
+        ).encode(),
     }
     if sum(map(len, files.values())) > MAX_PROTOCOL_BYTES:
         raise ValueError("protocol exceeds configured attachment limit")

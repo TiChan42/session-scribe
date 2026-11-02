@@ -158,6 +158,11 @@ Moduswechsel, getrennte Sitzungen/Budgets auch bei gleichem Modus und blockierte
 
 ## Discord-Steuerungsclient
 
+Synthetische Policy-Tests prüfen Aliasnormalisierung/-kollisionen, Profile pro
+Guild und Sprachkanal, Sitzungszustimmung, sofortiges Pausieren bei Join,
+60-Sekunden-Hinweise, explizites Pause/Resume und das Widerrufen der Zustimmung.
+Sie belegen keine Discord-Voice-Event-Latenz oder funktionierende DAVE-Aufnahme.
+
 Der separate `voice-test`-Einstieg ist ausschließlich für eine ausdrücklich
 autorisierte Einzelprobe vorgesehen. Er aktiviert keine allgemeinen Slash-Aufnahmen.
 Ein eigenes Testimage verwendet den MIT-lizenzierten Pycord-Empfangskandidaten

@@ -152,11 +152,22 @@ def demo(root: Path, mode: str) -> dict:
     )
     actor = Actor(guild_id=config.guild_id, channel_id="1002", user_id="1001")
     other = actor.model_copy(update={"user_id": "1005"})
-    session = control.start(actor, "1003", frozenset({actor.user_id, other.user_id}))
+    session = control.start(
+        actor,
+        "1003",
+        frozenset({actor.user_id, other.user_id}),
+        speaker_aliases={actor.user_id: "Ada", other.user_id: "Ben"},
+    )
     recorder = Recorder(store, session.id, config.limits)
     holder["recorder"] = recorder
     try:
         for person in (actor, other):
+            control.alias_consent(
+                person,
+                session.id,
+                "Ada" if person.user_id == actor.user_id else "Ben",
+                accepted=True,
+            )
             control.consent(person, session.id, cloud=True)
         control.resume(actor, session.id)
         for timestamp in range(0, 600, 20):

@@ -109,16 +109,29 @@ class Session(StrictModel):
     voice_channel_id: Snowflake
     recorder_bot_id: Snowflake | None = None
     protocol_channel_id: Snowflake | None = None
-    status_channel_id: Snowflake | None = None
+    status_channel_id: Snowflake | None = None  # The command channel that started this session.
     state: SessionState = SessionState.WAITING
     participants: frozenset[Snowflake]
     attendees: frozenset[Snowflake] = frozenset()
     consented: frozenset[Snowflake] = frozenset()
     cloud_consent: frozenset[Snowflake] = frozenset()
+    speaker_aliases: dict[Snowflake, str] = Field(default_factory=dict)
+    consent_reminder_at: int | None = Field(default=None, ge=0)
     inference: InferenceSettings
     characters: dict[Snowflake, list[str]] = Field(default_factory=dict)
     campaign: str | None = None
     stop_reason: str | None = None
+
+    @model_validator(mode="after")
+    def valid_speaker_aliases(self):
+        from .aliases import validate_alias
+
+        normalized = [validate_alias(alias) for alias in self.speaker_aliases.values()]
+        if normalized != list(self.speaker_aliases.values()):
+            raise ValueError("speaker aliases must already be normalized")
+        if len({alias.casefold() for alias in normalized}) != len(normalized):
+            raise ValueError("speaker aliases must be unique within a session")
+        return self
 
 
 class AudioChunk(StrictModel):

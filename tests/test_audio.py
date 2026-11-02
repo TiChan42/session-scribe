@@ -27,6 +27,7 @@ def test_lossless_bounded_segments_preserve_overlap_silence_loss_rejoin(rig):
     rig.control.pause(rig.actor, rig.session.id)
     rig.control.membership(rig.session.id, frozenset({rig.actor.user_id}))
     rig.control.membership(rig.session.id, rig.session.participants)
+    rig.control.alias_consent(rig.other, rig.session.id, "Ben", accepted=True)
     rig.control.consent(rig.other, rig.session.id, cloud=True)
     rig.control.resume(rig.actor, rig.session.id)
     rig.recorder.accept(Frame(rig.other.user_id, 4000, pcm))
