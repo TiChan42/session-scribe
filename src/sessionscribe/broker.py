@@ -272,7 +272,7 @@ class Broker:
         expected = (
             {"transcript.json"}
             if prepared.binding.phase == "stt"
-            else {"analysis.json", "result.md", "inference.json"}
+            else {"analysis.json", "result.md", "summary.md", "inference.json"}
         )
         if set(completion.outputs) != expected:
             raise ValueError("unexpected worker output files")
@@ -297,6 +297,10 @@ class Broker:
             result = validate_analysis(data["analysis.json"].decode(), prepared.session, segments)
             if data["result.md"] != render_analysis(result).encode():
                 raise ValueError("unexpected rendered model output")
+            from .render import render_interpretation
+
+            if data["summary.md"] != render_interpretation(result).encode():
+                raise ValueError("unexpected rendered interpretation")
             metadata = json.loads(data["inference.json"])
             if metadata.get("settings") != prepared.session.inference.model_dump(mode="json"):
                 raise ValueError("changed inference settings")

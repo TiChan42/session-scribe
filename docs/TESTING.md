@@ -237,7 +237,8 @@ Sitzung weiter Audio auf Platte schreibt. Kein reales Discord-Audio ist beteilig
 
 Routingtests prüfen Default, Override, Vererbung, explizite Deaktivierung, fremde
 Guild-Ziele und Persistenz. Versandtests prüfen fehlgeschlagene LLM-Jobs ohne Post,
-belegtes LLM-Ergebnis vor Veröffentlichung, Markdown-Anhänge, Kanaländerung und
+belegtes LLM-Ergebnis vor Veröffentlichung, beide Markdown-Anhänge, Quellenbelege,
+Interpretationsstellen, eingeschränkte Mermaid-Syntax, Kanaländerung und
 unklare Quittungen ohne Duplikat. Der Recorder-Test verweigert vollständiges
 Audio-Einlesen beim Abschließen; kleine Codec-/Frame-Puffer und native RSS-Grenzen
 sind damit nicht vollständig vermessen.

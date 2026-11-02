@@ -86,6 +86,8 @@ def transcript(rig):
             {
                 "kind": "proposal",
                 "text": "Ada soll prüfen; kein Beschluss.",
+                "rationale": "Die Aussage nennt ausdrücklich einen Vorschlag und verneint einen"
+                " Beschluss.",
                 "sources": [segment.id],
                 "owner": None,
                 "deadline": None,
@@ -93,6 +95,12 @@ def transcript(rig):
                 "character": None,
             }
         ],
+        "interpretation": {
+            "summary": "Ein Vorschlag liegt vor; ein Beschluss fehlt.",
+            "issues": [],
+            "mermaid": None,
+        },
+        "justified_mermaid": None,
     }
 
     class Cloud:

@@ -58,6 +58,8 @@ class SyntheticRunner:
                                         {
                                             "kind": "summary",
                                             "text": "Synthetischer Entwurf.",
+                                            "rationale": "Die Quelle fasst den Gesprächsinhalt"
+                                            " zusammen.",
                                             "sources": [s["id"] for s in payload["transcript"]],
                                             "owner": None,
                                             "deadline": None,
@@ -67,6 +69,12 @@ class SyntheticRunner:
                                             else None,
                                         }
                                     ],
+                                    "interpretation": {
+                                        "summary": "Synthetischer Kontext.",
+                                        "issues": [],
+                                        "mermaid": None,
+                                    },
+                                    "justified_mermaid": None,
                                 }
                             )
                         },

@@ -230,9 +230,12 @@ class Controller:
             raise Denied("cloud processing disabled")
         return self.store.restart_analysis(sid, settings)
 
-    def result(self, actor: Actor, sid: str) -> bytes:
+    def result(self, actor: Actor, sid: str) -> dict[str, bytes]:
         self.owned(actor, sid, "result")
-        return self.store.artifact(sid, "result.md")
+        return {
+            "protokoll-begruendet.md": self.store.artifact(sid, "result.md"),
+            "protokoll-interpretiert.md": self.store.artifact(sid, "summary.md"),
+        }
 
     def status_for(self, actor: Actor):
         self.authorize(actor, "status")

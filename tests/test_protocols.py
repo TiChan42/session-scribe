@@ -9,7 +9,7 @@ from sessionscribe.handoff import digest
 from sessionscribe.models import Analysis
 from sessionscribe.pipeline import PipelineScheduler
 from sessionscribe.recorder import FRAME_BYTES, Frame
-from sessionscribe.render import ProtocolPublisher, render_analysis
+from sessionscribe.render import ProtocolPublisher, render_analysis, render_interpretation
 
 
 class Delivery:
@@ -25,6 +25,12 @@ class Delivery:
         assert allowed_mentions["parse"] == []
         self.files.append((channel_id, filename, data))
         return "synthetic-attachment"
+
+    def send_files(self, channel_id, files, *, allowed_mentions):
+        assert set(files) == {"protokoll-begruendet.md", "protokoll-interpretiert.md"}
+        assert allowed_mentions["parse"] == []
+        self.files.extend((channel_id, name, data) for name, data in files.items())
+        return "synthetic-message-with-two-files"
 
 
 def pipeline(rig, tmp_path, *, long=False, cloud_error=False):
@@ -46,9 +52,13 @@ def pipeline(rig, tmp_path, *, long=False, cloud_error=False):
             result["findings"][0]["text"] = "Synthetischer Entwurf mit Quellen. " * 100
             output.json("analysis.json", result)
             output.atomic("result.md", render_analysis(Analysis.model_validate(result)).encode())
+            output.atomic(
+                "summary.md", render_interpretation(Analysis.model_validate(result)).encode()
+            )
             done = json.loads(output.read("complete.json"))
             done["outputs"]["analysis.json"] = digest(output.read("analysis.json"))
             done["outputs"]["result.md"] = digest(output.read("result.md"))
+            done["outputs"]["summary.md"] = digest(output.read("summary.md"))
             output.json("complete.json", done)
 
     runner.run = run
@@ -79,7 +89,7 @@ def test_only_committed_llm_protocol_is_enqueued_and_sent_once(rig, tmp_path):
     assert publisher.once()
     assert rig.store.protocol_queue()[0]["state"] == "sent"
     assert not publisher.once()
-    assert len(delivery.messages) == 1 and delivery.messages[0][0] == "1004"
+    assert len(delivery.files) == 2 and all(item[0] == "1004" for item in delivery.files)
 
 
 def test_broker_session_lock_delays_delivery_without_permanently_blocking_it(rig, tmp_path):
@@ -89,10 +99,10 @@ def test_broker_session_lock_delays_delivery_without_permanently_blocking_it(rig
     with rig.store.files.lock(f"locks/{rig.session.id}.lock") as held:
         assert held and publisher.once()
         assert rig.store.protocol_queue()[0]["state"] == "pending"
-        assert not delivery.messages
+        assert not delivery.files
     assert publisher.once()
     assert rig.store.protocol_queue()[0]["state"] == "sent"
-    assert len(delivery.messages) == 1
+    assert len(delivery.files) == 2
 
 
 def test_conflict_after_network_send_is_uncertain_and_never_automatically_retried(rig, tmp_path):
@@ -101,15 +111,15 @@ def test_conflict_after_network_send_is_uncertain_and_never_automatically_retrie
     pipeline(rig, tmp_path)
 
     class Ambiguous(Delivery):
-        def send(self, *args, **kwargs):
-            super().send(*args, **kwargs)
+        def send_files(self, *args, **kwargs):
+            super().send_files(*args, **kwargs)
             raise Conflict("synthetic receipt failure")
 
     delivery = Ambiguous()
     publisher = ProtocolPublisher(rig.store, rig.config, delivery)
     assert publisher.once()
     assert rig.store.protocol_queue()[0]["state"] == "uncertain"
-    assert not publisher.once() and len(delivery.messages) == 1
+    assert not publisher.once() and len(delivery.files) == 2
 
 
 def test_control_service_polls_committed_outbox_with_operator_guild_filter(rig, tmp_path):
@@ -146,9 +156,9 @@ def test_control_service_polls_committed_outbox_with_operator_guild_filter(rig, 
         assert not destinations
         service.policy = policy.model_copy(update={"allowed_guild_ids": frozenset({"1000"})})
         assert service.publish_once(destination)
-        assert destinations == ["1000"] and len(delivery.messages) == 1
+        assert destinations == ["1000"] and len(delivery.files) == 2
         assert not service.publish_once(destination)
-        assert len(delivery.messages) == 1 and len(closes) == 2
+        assert len(delivery.files) == 2 and len(closes) == 2
     finally:
         service.close()
 
@@ -157,10 +167,16 @@ def test_long_protocol_uses_bounded_markdown_attachment(rig, tmp_path):
     pipeline(rig, tmp_path, long=True)
     delivery = Delivery()
     assert ProtocolPublisher(rig.store, rig.config, delivery).once()
-    assert not delivery.messages and len(delivery.files) == 1
-    channel, filename, data = delivery.files[0]
-    assert channel == "1004" and filename == f"protocol-{rig.session.id}.md"
-    assert b"Quellen" in data and len(data) > 1900
+    assert not delivery.messages and len(delivery.files) == 2
+    assert {item[1] for item in delivery.files} == {
+        "protokoll-begruendet.md",
+        "protokoll-interpretiert.md",
+    }
+    assert all(item[0] == "1004" for item in delivery.files)
+    assert b"Quellen" in next(
+        item[2] for item in delivery.files if item[1] == "protokoll-begruendet.md"
+    )
+    assert sum(len(item[2]) for item in delivery.files) > 1900
 
 
 def test_cloud_failure_keeps_transcript_and_never_creates_publication(rig, tmp_path):
@@ -192,15 +208,15 @@ def test_ambiguous_send_and_sender_crash_are_not_repeated(rig, tmp_path):
     pipeline(rig, tmp_path)
 
     class Ambiguous(Delivery):
-        def send(self, *args, **kwargs):
-            super().send(*args, **kwargs)
+        def send_files(self, *args, **kwargs):
+            super().send_files(*args, **kwargs)
             raise OSError("synthetic lost acknowledgement")
 
     delivery = Ambiguous()
     worker = ProtocolPublisher(rig.store, rig.config, delivery)
     assert worker.once() and not worker.once()
     assert rig.store.protocol_queue()[0]["state"] == "uncertain"
-    assert len(delivery.messages) == 1
+    assert len(delivery.files) == 2
 
 
 def test_sender_restart_quarantines_inflight_outbox_item(rig, tmp_path):
@@ -235,4 +251,4 @@ def test_restart_keeps_an_already_acknowledged_publication_sent(rig, tmp_path):
     )  # Crash after durable receipt, before outbox update.
     assert not worker.once()
     assert rig.store.protocol_queue()[0]["state"] == "sent"
-    assert len(delivery.messages) == 1
+    assert len(delivery.files) == 2

@@ -157,11 +157,23 @@ class Segment(StrictModel):
 class Finding(StrictModel):
     kind: Literal["topic", "decision", "proposal", "task", "question", "chronicle", "summary"]
     text: str = Field(min_length=1, max_length=4000)
+    rationale: str = Field(min_length=1, max_length=2000)
     sources: list[str] = Field(min_length=1, max_length=100)
     owner: str | None
     deadline: str | None
     category: Literal["story", "mechanics", "planning", "meta", "unclear"] | None
     character: str | None
+
+
+class ContextIssue(StrictModel):
+    text: str = Field(min_length=1, max_length=3000)
+    sources: list[str] = Field(min_length=1, max_length=100)
+
+
+class Interpretation(StrictModel):
+    summary: str = Field(min_length=1, max_length=8000)
+    issues: list[ContextIssue] = Field(max_length=100)
+    mermaid: str | None = Field(default=None, max_length=20000)
 
 
 class Analysis(StrictModel):
@@ -170,3 +182,5 @@ class Analysis(StrictModel):
     mode: Mode
     session_id: Identifier
     findings: list[Finding] = Field(max_length=500)
+    interpretation: Interpretation
+    justified_mermaid: str | None = Field(default=None, max_length=20000)

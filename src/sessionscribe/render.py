@@ -29,6 +29,8 @@ def render_analysis(result: Analysis) -> str:
             "",
             safe_text(finding.text),
             "",
+            "Begründung: " + safe_text(finding.rationale),
+            "",
             "Quellen: " + ", ".join(finding.sources),
             "",
         ]
@@ -44,6 +46,30 @@ def render_analysis(result: Analysis) -> str:
                 f"Figur: {safe_text(finding.character or 'unklar')}",
                 "",
             ]
+    if result.justified_mermaid:
+        lines += ["", "## Diagramm", "", "```mermaid", result.justified_mermaid, "```", ""]
+    return "\n".join(lines)
+
+
+def render_interpretation(result: Analysis) -> str:
+    lines = [
+        f"# Interpretierte Zusammenfassung – {'Meeting' if result.mode == 'meeting' else 'DnD'}",
+        "",
+        "Einordnung aus dem Gesprächskontext; Schlussfolgerungen bleiben Interpretationen.",
+        "",
+        "## Zusammenfassung",
+        "",
+        safe_text(result.interpretation.summary),
+        "",
+    ]
+    if result.interpretation.issues:
+        lines += ["## Problematische oder unklare Stellen", ""]
+        for issue in result.interpretation.issues:
+            lines += [safe_text(issue.text), "", "Quellen: " + ", ".join(issue.sources), ""]
+    else:
+        lines += ["## Problematische oder unklare Stellen", "", "Keine erkannt.", ""]
+    if result.interpretation.mermaid:
+        lines += ["## Kontextdiagramm", "", "```mermaid", result.interpretation.mermaid, "```", ""]
     return "\n".join(lines)
 
 
@@ -55,6 +81,10 @@ class Delivery(Protocol):
 
     def send_file(
         self, channel_id: str, filename: str, data: bytes, *, allowed_mentions: dict
+    ) -> str: ...
+
+    def send_files(
+        self, channel_id: str, files: dict[str, bytes], *, allowed_mentions: dict
     ) -> str: ...
 
 
@@ -71,22 +101,19 @@ def _publish(
     result = validate_analysis(
         store.artifact(sid, "analysis.json").decode(), s, load_transcript(store, sid)
     )
-    text = render_analysis(result)
-    raw = text.encode()
-    if len(raw) > MAX_PROTOCOL_BYTES:
+    files = {
+        "protokoll-begruendet.md": render_analysis(result).encode(),
+        "protokoll-interpretiert.md": render_interpretation(result).encode(),
+    }
+    if sum(map(len, files.values())) > MAX_PROTOCOL_BYTES:
         raise ValueError("protocol exceeds configured attachment limit")
-    if len(text) > 1900 and not callable(getattr(delivery, "send_file", None)):
+    if not callable(getattr(delivery, "send_files", None)):
         raise ValueError("attachment delivery is required for this protocol")
     if not store.begin_delivery(sid):
         return False
     try:
         mentions = {"parse": [], "replied_user": False}
-        if len(text) > 1900:
-            receipt = delivery.send_file(
-                channel_id, f"protocol-{sid}.md", raw, allowed_mentions=mentions
-            )
-        else:
-            receipt = delivery.send(channel_id, text, allowed_mentions=mentions)
+        receipt = delivery.send_files(channel_id, files, allowed_mentions=mentions)
     except Exception:
         store.end_delivery(sid, None)
         raise

@@ -92,7 +92,7 @@ class Completion(StrictModel):
     schema_version: Literal[1]
     session_id: Identifier
     binding: Binding | None
-    outputs: dict[str, Digest] = Field(min_length=1, max_length=3)
+    outputs: dict[str, Digest] = Field(min_length=1, max_length=4)
     model_revision: str | None = None
     compute_type: Literal["int8"] | None = None
 
