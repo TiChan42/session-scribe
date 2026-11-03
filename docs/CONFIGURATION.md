@@ -119,7 +119,7 @@ STT erhält keine Secrets. Kein fremdes Gateway-Budget und keine lokale LLM-Inst
 | Befehl | Prüfung / Wirkung |
 | --- | --- |
 | start | ACL start, eigener Guild-Store, freigegebener Sprachkanal, Eigentümer beteiligt |
-| alias | nur im konfigurierten Befehlschat und im eigenen Sprachkanal; Alias plus Aufnahmeentscheidung für die aktive Sitzung |
+| alias | eigener Sprachkanal; Alias kann vorab ohne Auswahl gespeichert werden; bei aktiver Sitzung ist eine Wahl Pflicht und nur im Befehlschat der Sitzung zulässig |
 | alias-delete | entfernt den eigenen Alias im aktuellen Sprachkanal und widerruft die Sitzungszustimmung |
 | consent / revoke | `/consent` verwaltet optionale Cloud-Textauswertung; `/revoke` widerruft beide Zustimmungen und pausiert |
 | resume / pause | passende ACL und Eigentümer; Resume verlangt aktuelle Belegung, Alias und Zustimmung aller sowie sichtbaren Status |

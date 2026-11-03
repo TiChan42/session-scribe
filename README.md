@@ -99,7 +99,10 @@ Command-Registrierung. Sie bestätigt ausschließlich den Steuerungsclient.
 Aufnahmebefehle prüfen Guild, Kanal, Nutzer/Rollen, Eigentümer und Zustimmung.
 `/alias` bindet den selbst gewählten Namen an die Discord-ID im aktuellen
 Sprachkanal und fragt die Aufnahmeentscheidung für genau diese Sitzung ab.
-Gespeicherte Namen übertragen keine Zustimmung auf spätere Sitzungen. Ein
+Ohne aktive Sitzung lässt sich der Name schon vorab ohne Zustimmungswahl speichern;
+bei aktiver Sitzung ist eine Entscheidung Pflicht und `/alias` muss im
+Befehlschat der gestarteten Sitzung aufgerufen werden. Gespeicherte Namen
+übertragen keine Zustimmung auf spätere Sitzungen. Ein
 Beitritt ohne Zustimmung pausiert sofort; der Befehlschat erinnert minütlich,
 bis alle zugestimmt haben oder `/stop` beendet. `/pause` und `/resume` steuern
 die Sitzung ausdrücklich. Live-DAVE bleibt bis zu autorisierten Tests gesperrt.

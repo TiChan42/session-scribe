@@ -53,9 +53,9 @@ def definitions() -> list[dict]:
             command["options"] = [
                 {
                     "name": "recording_consent",
-                    "description": "Stimme dieser konkreten Sitzung ausdrücklich zu oder lehne ab",
+                    "description": "Bei aktiver Sitzung ausdrücklich zustimmen oder ablehnen",
                     "type": 3,
-                    "required": True,
+                    "required": False,
                     "choices": [
                         {"name": "Ich stimme zu", "value": "accept"},
                         {"name": "Ich stimme nicht zu", "value": "decline"},
@@ -64,7 +64,7 @@ def definitions() -> list[dict]:
                 {
                     "name": "alias",
                     "description": (
-                        "Dein Name im Protokoll; leer übernimmt deinen gespeicherten Alias"
+                        "Dein Name im Protokoll; bei aktiver Sitzung nur im Start-Befehlschat"
                     ),
                     "type": 3,
                     "required": False,

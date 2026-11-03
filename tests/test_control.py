@@ -121,7 +121,7 @@ def test_slash_router_checks_every_action(rig):
             "options"
         ]
     }
-    assert alias_options["recording_consent"]["required"] is True
+    assert alias_options["recording_consent"]["required"] is False
     assert {choice["value"] for choice in alias_options["recording_consent"]["choices"]} == {
         "accept",
         "decline",
