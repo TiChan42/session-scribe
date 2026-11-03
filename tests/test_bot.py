@@ -16,6 +16,7 @@ from sessionscribe.bot import (
     authenticated_actor,
     resolved_channel,
 )
+from sessionscribe.commands import definitions as session_command_definitions
 from sessionscribe.control import Denied
 from sessionscribe.credentials import CredentialError, discord_token
 from sessionscribe.guilds import AdminActor, GuildChannel, Setup
@@ -126,7 +127,7 @@ def test_alias_command_is_self_bound_and_session_consent_is_not_reused(policy):
         profile = service.session(
             "alias",
             voice_actor,
-            {"alias": "Ada", "recording_consent": "accept"},
+            {"alias": "Ada"},
             current_participants=frozenset({owner.user_id}),
         )
         assert profile == {"alias_saved": True, "consent_applied": False}
@@ -135,7 +136,12 @@ def test_alias_command_is_self_bound_and_session_consent_is_not_reused(policy):
         config, revision = service.directory.configuration("1000")
         service.directory._save(
             owner,
-            config.model_copy(update={"recording_enabled": True}),
+            config.model_copy(
+                update={
+                    "recording_enabled": True,
+                    "command_channel_ids": config.command_channel_ids | {"13"},
+                }
+            ),
             revision,
         )
         with service.directory.controller(
@@ -149,6 +155,32 @@ def test_alias_command_is_self_bound_and_session_consent_is_not_reused(policy):
             )
         assert session.consented == frozenset()
         assert service.session_voice_channel(owner, session.id) == "11"
+
+        alias_command = next(
+            command for command in session_command_definitions() if command["name"] == "alias"
+        )
+        consent_option = next(
+            option for option in alias_command["options"] if option["name"] == "recording_consent"
+        )
+        assert consent_option["required"] is False
+
+        other_command_channel = voice_actor.model_copy(update={"channel_id": "13"})
+        with pytest.raises(Denied):
+            service.session(
+                "alias",
+                other_command_channel,
+                {"alias": "Changed", "recording_consent": "accept"},
+                current_participants=frozenset({owner.user_id}),
+            )
+        assert service.directory.voice_aliases("1000", "11") == {owner.user_id: "Ada"}
+
+        with pytest.raises(ValueError, match="recording consent choice required"):
+            service.session(
+                "alias",
+                voice_actor,
+                {"alias": None},
+                current_participants=frozenset({owner.user_id}),
+            )
 
         applied = service.session(
             "alias",

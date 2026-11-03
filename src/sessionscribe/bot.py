@@ -113,7 +113,7 @@ class ControlService:
             return self.alias(
                 actor,
                 alias=options.get("alias"),
-                recording_consent=options["recording_consent"],
+                recording_consent=options.get("recording_consent"),
                 current_participants=current_participants,
             )
         if name == "alias-delete":
@@ -151,7 +151,7 @@ class ControlService:
         actor: AdminActor,
         *,
         alias: str | None,
-        recording_consent: str,
+        recording_consent: str | None,
         current_participants: frozenset[str] | None,
     ) -> dict:
         self.allow(actor)
@@ -162,18 +162,8 @@ class ControlService:
             or actor.voice_channel_id not in config.voice_channel_ids
         ):
             raise Denied("a configured voice and command channel are required")
-        if recording_consent not in ("accept", "decline"):
-            raise ValueError("recording consent choice required")
-        if alias is not None:
-            bound_alias = self.directory.set_voice_alias(
-                actor.guild_id, actor.voice_channel_id, actor.user_id, alias
-            )
-        else:
-            bound_alias = self.directory.voice_aliases(actor.guild_id, actor.voice_channel_id).get(
-                actor.user_id
-            )
-            if bound_alias is None:
-                raise ValueError("enter an alias before confirming consent")
+        if recording_consent is not None and recording_consent not in ("accept", "decline"):
+            raise ValueError("invalid recording consent choice")
 
         store = self.directory.store(actor.guild_id)
         try:
@@ -196,11 +186,28 @@ class ControlService:
                 ):
                     active = session
                     break
+            if active is not None:
+                if active.status_channel_id != actor.channel_id:
+                    raise Denied("use the command channel that started this session")
+                if current_participants is None or actor.user_id not in current_participants:
+                    raise Denied("fresh voice membership is required for recording consent")
+                if recording_consent is None:
+                    raise ValueError("recording consent choice required for an active session")
+
+            if alias is not None:
+                bound_alias = self.directory.set_voice_alias(
+                    actor.guild_id, actor.voice_channel_id, actor.user_id, alias
+                )
+            else:
+                bound_alias = self.directory.voice_aliases(
+                    actor.guild_id, actor.voice_channel_id
+                ).get(actor.user_id)
+                if bound_alias is None:
+                    raise ValueError("enter an alias before confirming consent")
+
             if active is None:
                 # Aliases persist, but consent is never carried into an unknown future session.
                 return {"alias_saved": True, "consent_applied": False}
-            if current_participants is None or actor.user_id not in current_participants:
-                raise Denied("fresh voice membership is required for recording consent")
             controller.membership(
                 active.id,
                 current_participants,
