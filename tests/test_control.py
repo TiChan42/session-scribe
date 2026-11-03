@@ -108,13 +108,23 @@ def test_slash_router_checks_every_action(rig):
     command_definitions = definitions()
     assert {d["name"] for d in command_definitions} >= {
         "stop",
+        "stopsession",
         "delete",
         "process",
         "consent",
         "alias",
         "alias-delete",
+        "startsession",
+        "pausesession",
     }
     assert all(not d["dm_permission"] for d in command_definitions)
+    by_name = {item["name"]: item for item in command_definitions}
+    for alias, original in (
+        ("startsession", "start"),
+        ("pausesession", "pause"),
+        ("stopsession", "stop"),
+    ):
+        assert by_name[alias]["options"] == by_name[original]["options"]
     alias_options = {
         option["name"]: option
         for option in next(item for item in command_definitions if item["name"] == "alias")[
@@ -131,6 +141,29 @@ def test_slash_router_checks_every_action(rig):
         CommandRouter(rig.control).dispatch("queue", rig.other)
     with pytest.raises(ValueError):
         CommandRouter(rig.control).dispatch("execute", rig.actor)
+
+
+def test_session_command_aliases_share_the_existing_handlers(rig):
+    router = CommandRouter(rig.control)
+    rig.control.stop(rig.actor, rig.session.id)
+    participants = frozenset({rig.actor.user_id, rig.other.user_id})
+    started = router.dispatch(
+        "startsession",
+        rig.actor,
+        voice_channel_id="1003",
+        participants=participants,
+        speaker_aliases={rig.actor.user_id: "Ada", rig.other.user_id: "Ben"},
+    )
+    assert started.state == SessionState.WAITING
+
+    rig.control.alias_consent(rig.actor, started.id, "Ada", accepted=True)
+    rig.control.alias_consent(rig.other, started.id, "Ben", accepted=True)
+    rig.control.resume(rig.actor, started.id)
+
+    paused = router.dispatch("pausesession", rig.actor, session_id=started.id)
+    assert paused.state == SessionState.PAUSED
+    stopped = router.dispatch("stopsession", rig.actor, session_id=started.id)
+    assert stopped.state == SessionState.STOPPED
 
 
 def test_status_reports_active_session_without_queue(rig):

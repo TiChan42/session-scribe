@@ -81,8 +81,12 @@ Protokollziel; automatische Veröffentlichung lässt sich je Kanal deaktivieren.
 Person die echte Discord-Berechtigung „Server verwalten“. Numerische Rollen-ACLs
 und feste Kanäle werden pro Guild gespeichert. Modus/Kanäle lassen sich während
 aktiver Aufnahme oder wartender Verarbeitung nicht umstellen. Der Discord-Client
-registriert diese sowie die Sitzungsbefehle; `/start` und `/resume` melden das
-geschlossene Aufnahmegate. Ein Join oder eine leere Sitzung wird dabei nicht erzeugt.
+registriert diese sowie die Sitzungsbefehle; `/start` und `/startsession` melden das
+geschlossene Aufnahmegate. Beide verlangen die Auswahl eines freigegebenen
+Sprachkanals und verwenden denselben Startablauf. `/pausesession` und
+`/stopsession` sind zusätzliche Namen für `/pause` und `/stop`; sie behalten
+dieselben Sitzungsoptionen und Prüfungen. Ein Join oder eine leere Sitzung wird
+durch `/start` oder `/startsession` nicht erzeugt.
 
 Für den Steuerungsclient `config/bot.example.json` nach `.local/bot.json` kopieren
 und absolute lokale Daten-/Tokenpfade eintragen. Modellname ist bis zur separaten
@@ -104,8 +108,9 @@ bei aktiver Sitzung ist eine Entscheidung Pflicht und `/alias` muss im
 Befehlschat der gestarteten Sitzung aufgerufen werden. Gespeicherte Namen
 übertragen keine Zustimmung auf spätere Sitzungen. Ein
 Beitritt ohne Zustimmung pausiert sofort; der Befehlschat erinnert minütlich,
-bis alle zugestimmt haben oder `/stop` beendet. `/pause` und `/resume` steuern
-die Sitzung ausdrücklich. Live-DAVE bleibt bis zu autorisierten Tests gesperrt.
+bis alle zugestimmt haben oder `/stop` beziehungsweise `/stopsession` beendet.
+`/pause` beziehungsweise `/pausesession` und `/resume` steuern die Sitzung
+ausdrücklich. Live-DAVE bleibt bis zu autorisierten Tests gesperrt.
 Parallele Aufnahmen
 schreiben begrenzte FLAC-Segmente direkt auf Platte. Stop reiht jede Sitzung mit Audio
 automatisch ein; andere Aufnahmen können während STT/LLM weiterlaufen. Der Recorder lädt keine

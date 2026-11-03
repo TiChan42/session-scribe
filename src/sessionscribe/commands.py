@@ -15,7 +15,7 @@ from .models import Actor
 if TYPE_CHECKING:
     from .capture import RecordingPool
 
-COMMANDS = (
+BASE_COMMANDS = (
     "start",
     "alias",
     "alias-delete",
@@ -30,6 +30,16 @@ COMMANDS = (
     "result",
     "delete",
 )
+COMMAND_ALIASES = {
+    "startsession": "start",
+    "stopsession": "stop",
+    "pausesession": "pause",
+}
+COMMANDS = (*BASE_COMMANDS, *COMMAND_ALIASES)
+
+
+def canonical_command(name: str) -> str:
+    return COMMAND_ALIASES.get(name, name)
 
 
 def definitions() -> list[dict]:
@@ -39,7 +49,8 @@ def definitions() -> list[dict]:
     ]
     for command in commands:
         name = command["name"]
-        if name == "start":
+        behavior = canonical_command(name)
+        if behavior == "start":
             command["options"] = [
                 {
                     "name": "voice_channel",
@@ -49,7 +60,7 @@ def definitions() -> list[dict]:
                     "required": True,
                 }
             ]
-        elif name == "alias":
+        elif behavior == "alias":
             command["options"] = [
                 {
                     "name": "recording_consent",
@@ -72,9 +83,9 @@ def definitions() -> list[dict]:
                     "max_length": 32,
                 },
             ]
-        elif name == "alias-delete":
+        elif behavior == "alias-delete":
             continue
-        elif name not in ("queue", "status"):
+        elif behavior not in ("queue", "status"):
             command["options"] = [
                 {
                     "name": "session_id",
@@ -85,7 +96,7 @@ def definitions() -> list[dict]:
                     "max_length": 32,
                 }
             ]
-            if name == "consent":
+            if behavior == "consent":
                 command["options"].append(
                     {
                         "name": "cloud_consent",
@@ -114,6 +125,7 @@ class CommandRouter:
     ):
         if name not in COMMANDS:
             raise ValueError("unknown command")
+        name = canonical_command(name)
         if name == "start":
             if self.recordings is not None:
                 return self.recordings.start(
