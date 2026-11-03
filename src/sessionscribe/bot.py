@@ -21,7 +21,7 @@ from typing import Literal
 
 from pydantic import Field, TypeAdapter, model_validator
 
-from .commands import CommandRouter
+from .commands import CommandRouter, canonical_command
 from .commands import definitions as session_definitions
 from .control import Controller, Denied
 from .credentials import discord_token
@@ -109,14 +109,15 @@ class ControlService:
         current_participants: frozenset[str] | None = None,
     ):
         self.allow(actor)
-        if name == "alias":
+        behavior = canonical_command(name)
+        if behavior == "alias":
             return self.alias(
                 actor,
                 alias=options.get("alias"),
                 recording_consent=options.get("recording_consent"),
                 current_participants=current_participants,
             )
-        if name == "alias-delete":
+        if behavior == "alias-delete":
             return self.delete_alias(actor)
         if "session_id" in options:
             TypeAdapter(Identifier).validate_python(options["session_id"], strict=True)
@@ -125,9 +126,9 @@ class ControlService:
             lambda channel, message: self.status(actor.guild_id, channel, message),
             lambda sid: self.close_audio(actor.guild_id, sid),
         ) as controller:
-            if name in ("start", "resume"):
-                controller.authorize(actor, name)
-                if name == "resume":
+            if behavior in ("start", "resume"):
+                controller.authorize(actor, behavior)
+                if behavior == "resume":
                     if current_participants is None:
                         raise Denied("fresh voice membership is required to resume")
                     target = controller.owned(actor, options["session_id"], "resume")
@@ -141,10 +142,10 @@ class ControlService:
                         ),
                     )
                 raise ReceiveUnavailable("DAVE reception awaits review and authorized tests")
-            if name == "process":
+            if behavior == "process":
                 controller.owned(actor, options["session_id"], "process")
                 raise ReceiveUnavailable("native processing workers are not enabled")
-            return CommandRouter(controller).dispatch(name, actor, **options)
+            return CommandRouter(controller).dispatch(behavior, actor, **options)
 
     def alias(
         self,

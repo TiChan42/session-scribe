@@ -103,6 +103,8 @@ def test_control_policy_capacity_roles_guilds_and_voice_gate(policy):
         )
         with pytest.raises(ReceiveUnavailable):
             service.session("start", admin(), {"voice_channel_id": "11"})
+        with pytest.raises(ReceiveUnavailable):
+            service.session("startsession", admin(), {"voice_channel_id": "11"})
         assert service.session("status", admin(), {})["sessions"] == []
         with pytest.raises(KeyError):
             service.session("status", admin("2000"), {})
@@ -300,13 +302,16 @@ def test_real_pycord_registration_and_callbacks(policy):
                 "setup",
                 "config",
                 "start",
+                "startsession",
                 "alias",
                 "alias-delete",
                 "consent",
                 "revoke",
                 "pause",
+                "pausesession",
                 "resume",
                 "stop",
+                "stopsession",
                 "status",
                 "queue",
                 "process",
@@ -335,6 +340,8 @@ def test_real_pycord_registration_and_callbacks(policy):
                 ctx, voice_channel=SimpleNamespace(id=11), channel=None, inherit=True
             )
             await commands["start"].callback(ctx, voice_channel=SimpleNamespace(id=11))
+            assert "DAVE" in ctx.respond.call_args.args[0]
+            await commands["startsession"].callback(ctx, voice_channel=SimpleNamespace(id=11))
             assert "DAVE" in ctx.respond.call_args.args[0]
             await commands["status"].callback(ctx)
             assert '"sessions": []' in ctx.respond.call_args.args[0]

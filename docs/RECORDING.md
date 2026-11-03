@@ -26,7 +26,7 @@ aktuelle Voice-Belegung aus Discord eingelesen. Ein Join pausiert die Aufnahme
 vor weiteren akzeptierten Frames; ein gespeicherter Alias kann die Anzeige
 füllen, nie aber die Zustimmung. Der Befehlschat meldet den Join sofort und
 erinnert bei ausstehender Zustimmung frühestens nach 60 Sekunden, anschließend
-minütlich. `/pause` schließt die aktuelle Datei und `/resume` startet erst nach
+minütlich. `/pause` und `/pausesession` schließen die aktuelle Datei; `/resume` startet erst nach
 erneuter Vollprüfung. Weder Zustimmung noch Verbindung lösen automatischen
 Wiederanlauf aus. Der Live-Empfang bleibt bis zum geprüften DAVE-Test gesperrt.
 

@@ -153,7 +153,8 @@ enthält IDs und selbst gewählte Namen und ist entsprechend geschützt zu siche
 Bei Join, Einwilligungswiderruf oder Verlust des Voice-Status muss die aktive
 Aufnahme pausieren. `/resume` gleicht die aktuelle Kanalbelegung erneut ab.
 Ausstehende Alias-/Zustimmungsschritte erzeugen höchstens alle 60 Sekunden eine
-Nachricht im Befehlschat; `/stop` beendet die Session. Bis ein DAVE-Empfänger
+Nachricht im Befehlschat; `/stop` oder `/stopsession` beendet die Session.
+`/pausesession` hat dieselbe Wirkung und ACL wie `/pause`. Bis ein DAVE-Empfänger
 autorisiert qualifiziert ist, bleibt die allgemeine Voice-Aufnahme gesperrt.
 Globale Capture-Limits (Sessions, Spuren, reservierte Bytes und freie Diskreserve)
 gelten zusätzlich zu Guild-/Sessionquoten. Die reservierte Disk muss auch wartende
