@@ -1,20 +1,31 @@
 # Prüfung und offene Nachweise
 
-Aktuell bestehen 175 fokussierte Anwendungstests, einschließlich Discord-Steuerungsclient,
-Broker-, Ergebnisbeleg- und Migrationstests. Dazu kommen vier separat ausgeführte
+Aktuell bestehen 208 fokussierte Anwendungstests, einschließlich Discord-Steuerungsclient,
+Broker-, Ergebnisbeleg- und Migrationstests. Dazu kommen sechs separat ausgeführte
 Host-Core-Tests, 46 synthetische Native-/Integrationstests und vier Registry-Tests
 im separaten Infrastrukturprojekt. Ansible-Syntax/Lint sowie unverändertes lokales
 Rendern der tatsächlichen nativen Vorlagen mit `changed=0` sind geprüft;
 das ist keine Idempotenz- oder Isolationsprüfung auf dem Server.
 
 Die reguläre Suite läuft mit Python 3.12 und `requirements/dev.txt`. Der schlanke
-Host-Core ist zusätzlich mit Python 3.14 und `requirements/host.txt` geprüft:
+Host-Core wird mit Python 3.14 aus dem tatsächlich gebauten Wheel installiert und
+mit `requirements/host.txt` geprüft. Die Host-Core-Suite kontrolliert auch, dass
+Sprecher-Aliase in gespeicherten Sessions erhalten bleiben:
 
 ```sh
-PYTHONPATH=src python3.14 -W error::ResourceWarning -m pytest -q host_tests
+python -m build --wheel --no-isolation
+python -m pip install --no-deps dist/sessionscribe-0.1.0-py3-none-any.whl
+python -W error::ResourceWarning -m pytest -o pythonpath= -q host_tests
 ```
 
-Hierfür eine getrennte Umgebung mit dem Host-Lockfile verwenden. Es enthält
+Hierfür eine getrennte Python-3.14-Umgebung mit Host- und Build-Lockfiles verwenden:
+
+```sh
+python -m pip install --require-hashes -r requirements/host.txt
+python -m pip install --require-hashes -r requirements/build.txt
+```
+
+Das Host-Lockfile enthält
 Prüfwerkzeuge; der spätere produktive Broker benötigt nur `requirements/core.txt`.
 Audio-/Discord-/STT-Extras bleiben auf Python 3.12. Host-Core-Tests prüfen Import-
 trennung, SQLite-/Queue-/Backup-Verhalten, Guild-Persistenz und Ressourcen-Admission.

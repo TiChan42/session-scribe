@@ -43,6 +43,12 @@ def test_trusted_host_imports_never_load_voice_audio_or_inference_engines():
     }
 
 
+def test_host_wheel_roundtrips_session_speaker_aliases():
+    current = session().model_copy(update={"speaker_aliases": {"1001": "Ada"}})
+    loaded = Session.model_validate_json(current.model_dump_json())
+    assert loaded.speaker_aliases == {"1001": "Ada"}
+
+
 def test_store_queue_leases_backup_and_tenant_guard(tmp_path):
     store = Store(tmp_path / "guild", "1000")
     try:
