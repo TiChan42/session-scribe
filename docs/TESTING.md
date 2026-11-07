@@ -70,6 +70,13 @@ getrackten oder erzwungen hinzugefügten Dateien. Lokal wurde nichts gestaged.
 
 ## Synthetischer vertikaler Weg
 
+Die Container-Builds prüfen zusätzlich den Debian-Sicherheitsfix für APT und
+libapt-pkg6.0 (mindestens 2.6.2). Ein Python-SBOM allein belegt keine aktualisierten
+OS-Pakete; diese brauchen einen eigenen Distributions-/Imagescan. Nach einem
+Basisimagewechsel sind Releaseprüfung und Bereitschaft derselben Revision erneut
+erforderlich. Der Voice-Test bleibt an die ausdrücklich qualifizierte Revision
+gebunden.
+
 ```sh
 .venv/bin/sessionscribe demo --root .cache/demo-meeting --mode meeting
 .venv/bin/sessionscribe demo --root .cache/demo-dnd --mode dnd
