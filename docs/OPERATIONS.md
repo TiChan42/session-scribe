@@ -61,6 +61,15 @@ Voice-Regeln müssen bei Unsicherheit pausieren, nicht die Firewall öffnen.
 
 ## CI und spätere Auslieferung
 
+Alle Python-3.12-Images verwenden einen ausdrücklich geprüften Digest des
+offiziellen `3.12-slim-bookworm`-Images. Der Build verweigert APT oder libapt-pkg6.0
+unter 2.6.2 (Debian-Fix für CVE-2026-109518). Neue Basis-Digests werden über PR,
+geschütztes main und den signierten Releaseweg übernommen; ein Host-Update
+aktualisiert die Pakete vorhandener Containerimages nicht. Nach der Installation
+der gelockten Laufzeitabhängigkeiten entfernen die Images pip, setuptools und
+wheel. Das experimentelle Voice-Image verwendet HTTPS und deaktivierte
+Downloadwiederholungen für seinen begrenzten APT-Installationsschritt.
+
 GitHub Actions prüft PRs ohne echte Credentials. Actions sind per Commit gepinnt,
 Rechte minimal, Checkout ohne gespeicherte Credentials. Kein `pull_request_target`.
 Der Buildjob verlangt aktuelles geschütztes main, einen dort gemergten PR und
