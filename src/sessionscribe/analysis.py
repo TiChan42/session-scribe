@@ -31,6 +31,24 @@ node declarations and arrows, IDs A-Z, labels without quotes, brackets, HTML or 
 Diagram claims must be supported by cited findings/issues. No Markdown fences or prose outside
 JSON."""
 
+# Preserve the exact v1 request for existing immutable session/analysis snapshots.
+SYSTEM_V2 = (
+    SYSTEM.replace(
+        "node declarations and arrows, IDs A-Z, labels without quotes, "
+        "brackets, HTML or directives.",
+        'node declarations and arrows, IDs A-Z. Write nodes exactly as A["Plain label"] '
+        "and edges as A --> B; labels cannot contain quotes, brackets, HTML or directives.",
+    )
+    + """
+Mode-specific constraints are mandatory even when the response schema permits nullable fields:
+For meeting, EVERY finding must have category=null and character=null. Never use chronicle.
+For dnd, EVERY finding must have a non-null category from story, mechanics, planning, meta, unclear.
+EVERY finding whose kind is not task must have owner=null and deadline=null.
+For a task, owner and deadline must be explicit in its cited sources; otherwise use null.
+These field rules also apply to summary/topic/proposal findings and synthetic test conversations.
+"""
+)
+
 
 class ContextOverflow(ValueError):
     pass
@@ -108,7 +126,7 @@ def request_for(session: Session, segments) -> tuple[dict, int]:
         "response_schema": Analysis.model_json_schema(),
     }
     messages = [
-        {"role": "system", "content": SYSTEM},
+        {"role": "system", "content": {"v1": SYSTEM, "v2": SYSTEM_V2}[settings.prompt_version]},
         {
             "role": "user",
             "content": json.dumps(payload, ensure_ascii=False, separators=(",", ":")),

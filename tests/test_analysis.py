@@ -1,4 +1,5 @@
 import copy
+import hashlib
 import json
 
 import pytest
@@ -80,6 +81,40 @@ def test_thinking_is_explicit_and_legacy_snapshots_keep_their_shape(transcript):
     request, after = request_for(planned, [transcript.segment])
     assert request["think"] == "low" and after == before
     assert session.inference.thinking is None
+
+
+def test_prompt_version_preserves_legacy_requests_and_adds_mode_constraints(transcript):
+    from sessionscribe.analysis import SYSTEM
+
+    session = transcript.rig.store.session(transcript.rig.session.id)
+    before = session.model_dump_json()
+    legacy, _ = request_for(session, [transcript.segment])
+    planned = session.model_copy(
+        update={"inference": session.inference.model_copy(update={"prompt_version": "v2"})}
+    )
+    current, _ = request_for(planned, [transcript.segment])
+    assert (
+        hashlib.sha256(SYSTEM.encode()).hexdigest()
+        == "465c4dbd476578ca96e72a79f304174af3fcb483822f9d575176ec44fef10635"
+    )
+    assert legacy["messages"][0]["content"] == SYSTEM
+    assert current["messages"][0]["content"] != SYSTEM
+    assert "category=null and character=null" in current["messages"][0]["content"]
+    assert 'A["Plain label"]' in current["messages"][0]["content"]
+    assert legacy["messages"][1:] == current["messages"][1:]
+    assert session.model_dump_json() == before
+    assert request_for(session, [transcript.segment])[0] == legacy
+
+
+def test_meeting_category_is_still_rejected_with_corrected_prompt(transcript):
+    session = transcript.rig.store.session(transcript.rig.session.id)
+    planned = session.model_copy(
+        update={"inference": session.inference.model_copy(update={"prompt_version": "v2"})}
+    )
+    result = copy.deepcopy(transcript.result)
+    result["findings"][0]["category"] = "meta"
+    with pytest.raises(ValueError, match="invalid meeting finding"):
+        validate_analysis(json.dumps(result), planned, [transcript.segment])
 
 
 def test_context_interpretations_and_mermaid_are_bounded_and_source_bound(transcript):

@@ -1,6 +1,6 @@
 # Prüfung und offene Nachweise
 
-Aktuell bestehen 208 fokussierte Anwendungstests, einschließlich Discord-Steuerungsclient,
+Aktuell bestehen 210 fokussierte Anwendungstests, einschließlich Discord-Steuerungsclient,
 Broker-, Ergebnisbeleg- und Migrationstests. Dazu kommen sechs separat ausgeführte
 Host-Core-Tests, 46 synthetische Native-/Integrationstests und vier Registry-Tests
 im separaten Infrastrukturprojekt. Ansible-Syntax/Lint sowie unverändertes lokales
@@ -289,3 +289,8 @@ Für einen freigegebenen Live-Modelltest Denksteuerung und Antwortbudget explizi
 festlegen. Falls Modellmetadaten fehlen, Unterstützung nicht voraussetzen.
 Abschlussgrund, Inhalt, Quellenbelege und Inferenzmetadaten tatsächlich prüfen;
 ein erfolgreicher HTTP-Status oder vorhandener Denktext beweist kein Protokoll.
+
+
+Die Prompt-Regression prüft die unveränderten v1-Systembytes, die explizite Auswahl
+von v2 und das Beibehalten der strengen Meeting-Validierung. Ein korrigierter Prompt
+lockert weder Quellenbindung noch die Prüfung unzulässiger Kategorien.

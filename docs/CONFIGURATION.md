@@ -172,3 +172,11 @@ Der zusätzliche CLI-Modus `voice-test-listener` lädt eine private TestPolicy m
 Dieses Kennzeichen erlaubt nur das Warten auf `/testaufnahme`; erst ein geprüftes
 Guild-Interaktionsereignis erzeugt die kurzlebige Aufnahmepolicy. Die Aufnahme ist
 auf 60 Sekunden und eine Person begrenzt. Der reguläre `/start`-Gate bleibt bestehen.
+
+
+Neue Sitzungen können `inference.prompt_version: v2` verwenden. Diese Version
+präzisiert die Regeln für Meeting-/DnD-Felder: Meeting-Findings haben immer
+`category=null` und `character=null`; Zuständigkeit und Frist sind ausschließlich
+bei Aufgaben und nur mit Quellenbeleg erlaubt. Optionale Mermaid-Knoten verwenden
+die vom Validator erwartete Schreibweise. Die bestehende Version `v1` bleibt
+bytegleich verfügbar; gespeicherte Sitzungen und Analysepläne werden nicht geändert.
