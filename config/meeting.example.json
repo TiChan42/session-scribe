@@ -81,7 +81,7 @@
     "model": "OPERATOR_APPROVED_CLOUD_MODEL",
     "context_tokens": 32768,
     "output_tokens": 2048,
-    "prompt_version": "v1",
+    "prompt_version": "v2",
     "split_mode": "reject"
   },
   "limits": {

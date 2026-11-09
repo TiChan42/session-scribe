@@ -26,7 +26,7 @@ class SessionState(StrEnum):
 
 class InferenceSettings(StrictModel):
     model: str = Field(min_length=1, max_length=150)
-    prompt_version: Literal["v1"] = "v1"
+    prompt_version: Literal["v1", "v2"] = "v1"
     context_tokens: int = Field(ge=1024, le=262144)
     output_tokens: int = Field(ge=256, le=16384)
     overhead_tokens: int = Field(default=512, ge=256)

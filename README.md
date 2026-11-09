@@ -23,6 +23,9 @@ einem neuen Analyseplan neu ansetzen. Aufnahme-Snapshot, Transkript und alte
 Fehlversuche bleiben erhalten. Explizite Denkstufen und getrennte Antwortlimits
 werden pro Auftrag gespeichert; abgeschnittene Modellantworten bleiben unveröffentlicht.
 
+Die optionale Prompt-Version `v2` präzisiert modusspezifische Ausgabevorgaben.
+Bestehende `v1`-Sitzungen behalten ihre ursprünglichen Requests.
+
 Jede Auswertung erzeugt zwei Dateien: `protokoll-begruendet.md` ordnet Aussagen mit
 Begründung und Quellen ein; `protokoll-interpretiert.md` fasst den Kontext zusammen und
 führt problematische oder unklare Stellen samt Quellen auf. Geeignete Mermaid-Flussdiagramme
