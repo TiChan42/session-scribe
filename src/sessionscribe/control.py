@@ -119,7 +119,8 @@ class Controller:
         with contextlib.suppress(OSError):
             self.status(
                 s.status_channel_id,
-                "Aufnahme wartet: Alle Anwesenden brauchen einen Alias und müssen "
+                f"Aufnahme wartet (Sitzung `{s.id}`): "
+                "Alle Anwesenden brauchen einen Alias und müssen "
                 "dieser Sitzung ausdrücklich zustimmen. /stop beendet sie vollständig.",
             )
         current = self.store.session(s.id)
@@ -453,6 +454,12 @@ class Controller:
             "protokoll-interpretiert.md": self.store.artifact(sid, "summary.md"),
         }
 
+    def transcript(self, actor: Actor, sid: str) -> dict[str, bytes]:
+        self.owned(actor, sid, "result")
+        if self.store.job_result(sid, "stt") is None:
+            raise Conflict("committed transcript required")
+        return {"transkript.json": self.store.artifact(sid, "transcript.json")}
+
     def status_for(self, actor: Actor):
         self.authorize(actor, "status")
         sessions = []
@@ -464,7 +471,10 @@ class Controller:
                         {
                             "session_id": s.id,
                             "state": s.state.value,
+                            "stop_reason": s.stop_reason,
                             "participants": len(s.participants),
+                            "recording_consents": len(s.consented & s.participants),
+                            "cloud_consents": len(s.cloud_consent & s.attendees),
                             "voice_channel_id": s.voice_channel_id,
                             "recorder_bot_id": s.recorder_bot_id,
                             "protocol_channel_id": s.protocol_channel_id,

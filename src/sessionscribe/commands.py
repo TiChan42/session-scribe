@@ -105,6 +105,24 @@ def definitions() -> list[dict]:
                         "required": True,
                     }
                 )
+        if behavior == "process":
+            command.setdefault("options", []).append(
+                {
+                    "name": "retry_analysis",
+                    "description": "Gescheiterte Cloud-Auswertung mit neuem Plan wiederholen",
+                    "type": 5,
+                    "required": False,
+                }
+            )
+        if behavior == "result":
+            command["options"].append(
+                {
+                    "name": "raw_transcript",
+                    "description": "Nur das geprüfte Rohtranskript abrufen",
+                    "type": 5,
+                    "required": False,
+                }
+            )
     return commands
 
 
@@ -122,6 +140,8 @@ class CommandRouter:
         participants: frozenset[str] = frozenset(),
         speaker_aliases: dict[str, str] | None = None,
         cloud_consent: bool = False,
+        retry_analysis: bool = False,
+        raw_transcript: bool = False,
     ):
         if name not in COMMANDS:
             raise ValueError("unknown command")
@@ -151,5 +171,9 @@ class CommandRouter:
             raise ValueError("session ID required")
         if name == "consent":
             return self.control.consent(actor, session_id, cloud=cloud_consent)
+        if name == "process" and retry_analysis:
+            return self.control.restart_analysis(actor, session_id, self.control.config.inference)
+        if name == "result" and raw_transcript:
+            return self.control.transcript(actor, session_id)
         method = getattr(self.control, name)
         return method(actor, session_id)

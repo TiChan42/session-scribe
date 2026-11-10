@@ -104,3 +104,16 @@ Manage-Guild-Recht erlaubt. Startmeldung und Stoppknopf sind sichtbar; Verlassen
 des Sprachkanals, Teilnehmerwechsel oder das Zeitlimit beenden die Aufnahme.
 Die für die Probe bestätigte Cloud-Einwilligung wird in ihren privaten Metadaten
 gespeichert. Eine vorbereitete Probe ist kein bestandener Empfangsnachweis.
+
+## Zustimmung im integrierten Empfänger
+
+`/startsession` reserviert eine wartende Sitzung. Namen dürfen gespeichert werden,
+Aufnahmezustimmung gilt dagegen nur für diese Sitzung. Vor `/resume` braucht jede
+anwesende Person Alias und ausdrückliche Zustimmung. Cloud bleibt eine zusätzliche
+Entscheidung. Bei Mitgliedschaftswechsel wird sofort der Audioeingang geschlossen.
+
+Empfangsquittungen enthalten Release, Zähler pro freigegebenem Sprecher, Laufzeit,
+Zeitstempelverluste und feste Fehlercodes, keine Rohpakete, Tokens oder Exception-Texte.
+Sie bleiben im privaten Session-Store. Das Rohtranskript wird über einen gesonderten,
+eigentümergebundenen Abruf angeboten; es wird nicht als validiertes LLM-Protokoll
+ausgegeben. Fehlercodes enthalten Phase und Fehlerklasse ohne Gesprächsinhalte.

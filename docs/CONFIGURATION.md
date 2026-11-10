@@ -180,3 +180,28 @@ präzisiert die Regeln für Meeting-/DnD-Felder: Meeting-Findings haben immer
 bei Aufgaben und nur mit Quellenbeleg erlaubt. Optionale Mermaid-Knoten verwenden
 die vom Validator erwartete Schreibweise. Die bestehende Version `v1` bleibt
 bytegleich verfügbar; gespeicherte Sitzungen und Analysepläne werden nicht geändert.
+
+## Betrieb der integrierten Aufnahme
+
+`BotPolicy` kennt `voice_reception: disabled|qualification|qualified` und
+`cloud_processing: disabled|native`. Alle aktiven Funktionen brauchen ausdrückliche
+`recording_guild_ids`, `processing_guild_ids` beziehungsweise `cloud_guild_ids`; diese
+müssen Teil von `allowed_guild_ids` sein. Cloud-Guilds müssen auch für Verarbeitung
+freigegeben sein. Aufnahme und Verarbeitung verwenden weiterhin getrennte Dienste.
+
+`qualification` ist auf zehn Minuten und vier Teilnehmer begrenzt. Bestehende
+Guild-Limits werden zusätzlich durch die aktuellen Betreiberlimits begrenzt.
+Die Infrastruktur verlangt für `qualified` einen echten passenden Empfangsbericht;
+das reine Ändern einer JSON-Eigenschaft ersetzt diese Prüfung nicht.
+
+`recording_bots` enthält optionale Objekte mit `bot_id`, `guild_ids` und absolutem
+`token_file`. Dateien sind eigene geschützte Credentials. Sie werden niemals an
+Guild-Commands, STT oder Auswertung ausgegeben. Eine leere Liste verwendet nur
+die Steuerungsidentität und erlaubt daher einen Sprachkanal je Guild.
+`voice_gate` verweist auf den ausschließlich für Endpoint-Leases vorgesehenen
+Unix-Socket; kein Container erhält Host-Befehle oder eine Engine-API.
+
+`/config features` ist nur mit Manage-Guild-Recht möglich und kann die Freigabe
+des Betreibers nicht erweitern. Cloud-Zustimmung bleibt zusätzlich pro Sitzung
+und Person erforderlich. `config/bot.qualification.example.json` enthält nur
+synthetische IDs; Produktionswerte gehören in den privaten Operator-Kontext.

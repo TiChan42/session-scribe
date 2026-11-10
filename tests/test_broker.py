@@ -21,6 +21,21 @@ from sessionscribe.transcript import canonicalize, load_transcript
 GOOD = Resources(8 * 1024**3, 8 * 1024**3, 0, 4)
 
 
+def test_validation_failure_keeps_safe_phase_reason_even_if_checkpoint_harvest_fails(rig, tmp_path):
+    queued(rig)
+    worker = broker(rig, tmp_path)
+
+    def invalid(_prepared):
+        raise ValueError("synthetic private fixture content must not enter job errors")
+
+    worker.harvest = invalid
+    assert worker.once()
+    row = rig.store.queue_status()[0]
+    assert row["state"] == "pending" and row["error"] == "stt_validate_invalid"
+    assert "fixture content" not in row["error"]
+    assert rig.store.job_result(rig.session.id, "stt") is None
+
+
 class SyntheticRunner:
     def __init__(self, config, state):
         self.config, self.state = config, state

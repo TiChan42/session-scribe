@@ -1,4 +1,4 @@
-"""Discord control transport. Live voice reception remains deliberately unavailable.
+"""Guild-scoped Discord control with explicit pinned reception and native handoffs.
 
 SQLite and synchronous policy run on one dedicated thread. Discord I/O remains on
 the event loop. Neither errors nor health records contain credentials or content.
@@ -14,7 +14,9 @@ import io
 import json
 import logging
 import re
+import signal
 import time
+import uuid
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Literal
@@ -34,10 +36,30 @@ from .guilds import (
     Setup,
 )
 from .guilds import definitions as guild_definitions
-from .models import Identifier, InferenceSettings, Limits, SessionState, Snowflake, StrictModel
+from .models import (
+    Identifier,
+    InferenceSettings,
+    Limits,
+    Session,
+    SessionState,
+    Snowflake,
+    StrictModel,
+)
 from .render import ProtocolPublisher
 from .store import Conflict
 from .voice import ReceiveUnavailable
+
+
+class RecorderCredential(StrictModel):
+    bot_id: Snowflake
+    guild_ids: frozenset[Snowflake]
+    token_file: Path
+
+    @model_validator(mode="after")
+    def private_path(self):
+        if not self.token_file.is_absolute() or not self.guild_ids:
+            raise ValueError("scoped recorder credential path required")
+        return self
 
 
 class BotPolicy(StrictModel):
@@ -48,24 +70,213 @@ class BotPolicy(StrictModel):
     limits: Limits = Limits()
     allowed_guild_ids: frozenset[Snowflake] = frozenset()
     max_guilds: int = Field(default=32, ge=1, le=1000)
-    # These fields cannot unlock unreviewed reception or an absent worker launcher.
-    voice_reception: Literal["disabled"] = "disabled"
-    cloud_processing: Literal["disabled"] = "disabled"
+    # Qualification is an explicit restricted test mode, never a reception proof.
+    voice_reception: Literal["disabled", "qualification", "qualified"] = "disabled"
+    cloud_processing: Literal["disabled", "native"] = "disabled"
+    recording_guild_ids: frozenset[Snowflake] = frozenset()
+    processing_guild_ids: frozenset[Snowflake] = frozenset()
+    cloud_guild_ids: frozenset[Snowflake] = frozenset()
+    recording_bots: tuple[RecorderCredential, ...] = ()
+    voice_gate: Path = Path("/voice-gate/udp.sock")
 
     @model_validator(mode="after")
     def absolute_paths(self):
         if not self.data_root.is_absolute() or not self.token_file.is_absolute():
             raise ValueError("runtime paths must be absolute")
+        if not self.voice_gate.is_absolute():
+            raise ValueError("absolute scoped voice gateway required")
+        scopes = self.recording_guild_ids | self.processing_guild_ids | self.cloud_guild_ids
+        if scopes - self.allowed_guild_ids:
+            raise ValueError("runtime features require an explicit operator guild allowlist")
+        if self.cloud_guild_ids - self.processing_guild_ids:
+            raise ValueError("cloud guilds require native processing scope")
+        if self.voice_reception != "disabled" and not self.recording_guild_ids:
+            raise ValueError("voice requires explicit guild scope")
+        if self.cloud_processing == "native" and not self.processing_guild_ids:
+            raise ValueError("native processing requires explicit guild scope")
+        if self.voice_reception == "qualification" and (
+            self.limits.max_duration_ms > 600_000 or self.limits.max_participants > 4
+        ):
+            raise ValueError("qualification is limited to ten minutes and four participants")
+        if len(self.recording_bots) > 16 or len({b.bot_id for b in self.recording_bots}) != len(
+            self.recording_bots
+        ):
+            raise ValueError("bounded unique recorder identities required")
+        if any(b.guild_ids - self.recording_guild_ids for b in self.recording_bots):
+            raise ValueError("recorder guild scope exceeds operator scope")
         return self
 
 
 class ControlService:
     """Called only from the single policy executor, never the Discord event loop."""
 
-    def __init__(self, policy: BotPolicy, status, close_audio):
-        self.policy, self.status, self.close_audio = policy, status, close_audio
-        self.directory = GuildDirectory(policy.data_root, policy.inference, limits=policy.limits)
+    def __init__(self, policy: BotPolicy, status, close_audio, *, ingress=None):
+        self.policy, self.status, self.transport_close = policy, status, close_audio
+        self.ingress, self.pool = ingress, None
+        self.origins = {}
+        self.directory = GuildDirectory(
+            policy.data_root,
+            policy.inference,
+            limits=policy.limits,
+            recording_guild_ids=policy.recording_guild_ids,
+            cloud_guild_ids=policy.cloud_guild_ids,
+        )
         self.publish_cursor = 0
+        self.last_capture_health = 0
+
+    def capture_health(self, force=False):
+        if self.ingress and (force or time.monotonic() - self.last_capture_health >= 5):
+            self.directory.files.json(
+                "capture-health.json",
+                {
+                    "schema": 1,
+                    "revision": self.policy.revision,
+                    "checked_at": time.time(),
+                    "active_sessions": len(self.pool.status()) if self.pool else 0,
+                },
+            )
+            self.last_capture_health = time.monotonic()
+
+    def set_recording_bots(self, bots):
+        from .capture import RecordingPool
+
+        if self.pool is not None:
+            if self.pool.bots != bots:
+                raise Conflict("recorder identities cannot change during runtime")
+            return
+        self.pool = RecordingPool(bots)
+        self.directory.recorder_bot_ids = frozenset(b.id for b in bots)
+        self.capture_health(force=True)
+
+    def close_audio(self, guild_id, sid):
+        if self.ingress:
+            self.ingress.pause(guild_id, sid)
+        if self.pool:
+            self.pool.close_session(guild_id, sid)
+            if not any(
+                r["guild_id"] == guild_id and r["session_id"] == sid for r in self.pool.status()
+            ):
+                self.origins.pop((guild_id, sid), None)
+                if self.ingress:
+                    live = self.ingress.sessions.get((guild_id, sid))
+                    if live:
+                        store = self.directory.store(guild_id)
+                        try:
+                            session = store.session(sid)
+                            store.files.json(
+                                f"sessions/{sid}/receive-receipt.json",
+                                {
+                                    "schema": 1,
+                                    "session_id": sid,
+                                    "revision": self.policy.revision,
+                                    "mode": self.policy.voice_reception,
+                                    "checked_at": time.time(),
+                                    "elapsed_ms": int((time.monotonic() - live.origin) * 1000),
+                                    "frames": live.frames,
+                                    "nonzero_frames": live.nonzero_frames,
+                                    "speakers": dict(live.speakers),
+                                    "timing_drops": live.timing_drops,
+                                    "failure": live.failure,
+                                    "stop_reason": session.stop_reason,
+                                },
+                            )
+                        finally:
+                            store.close()
+                    self.ingress.forget(guild_id, sid)
+        self.transport_close(guild_id, sid)
+        self.capture_health(force=True)
+
+    def poll_audio(self):
+        self.capture_health()
+        if not self.pool or not self.ingress:
+            return set()
+        for live, frame in self.ingress.drain():
+            try:
+                accepted = self.pool.accept(
+                    live.session.recorder_bot_id, live.session.tenant, live.session.id, frame
+                )
+            except Denied:
+                accepted = False
+            if accepted:
+                live.frames += 1
+                live.nonzero_frames += bool(any(frame.pcm))
+                if any(frame.pcm):
+                    live.speakers[frame.speaker_id] = live.speakers.get(frame.speaker_id, 0) + 1
+        for key, live in list(self.ingress.sessions.items()):
+            if live.failure:
+                self.pool.interrupt(*key, live.failure)
+                self.close_audio(*key)
+        active = set()
+        for row in self.pool.status():
+            key = row["guild_id"], row["session_id"]
+            if self.origins.get(key) is not None:
+                self.pool.tick(*key, int((time.monotonic() - self.origins[key]) * 1000))
+            store = self.directory.store(key[0])
+            try:
+                state = store.session(key[1]).state
+                if state == SessionState.RECORDING:
+                    active.add(key)
+                elif state in (SessionState.STOPPED, SessionState.INTERRUPTED):
+                    self.close_audio(*key)
+            finally:
+                store.close()
+        return active
+
+    def capture_session(self, guild_id, sid):
+        store = self.directory.store(guild_id)
+        try:
+            return store.session(sid)
+        finally:
+            store.close()
+
+    def capture_ready(self, guild_id, sid):
+        session = self.capture_session(guild_id, sid)
+        if session.state != SessionState.RECORDING:
+            raise Conflict("session is not recording")
+        key = guild_id, sid
+        if self.origins.get(key) is None:
+            self.origins[key] = time.monotonic()
+        return self.origins[key]
+
+    def recover_recordings(self):
+        """Interrupt old captures, retain partial files, queue only closed durable audio."""
+        guilds = self.directory.db.execute("SELECT guild_id FROM configurations").fetchall()
+        if len(guilds) > self.policy.max_guilds:
+            raise ValueError("guild capacity exceeded during recovery")
+        for (guild,) in guilds:
+            if self.policy.allowed_guild_ids and guild not in self.policy.allowed_guild_ids:
+                continue
+            store = self.directory.store(guild)
+            try:
+                store.interrupt_recordings()
+                for row in store.db.execute("SELECT id FROM sessions"):
+                    session = store.session(row[0])
+                    if session.stop_reason != "process_restart":
+                        continue
+                    audio = store.files.root / "sessions" / session.id / "audio"
+                    incomplete = any(audio.glob("*.part")) or any(audio.glob("*.journal.json"))
+                    if incomplete:
+                        store.save_session(
+                            session, session.model_copy(update={"stop_reason": "incomplete_audio"})
+                        )
+                    elif any(audio.glob("*.flac")):
+                        store.enqueue(session.id, "stt")
+            finally:
+                store.close()
+
+    def capture_failed(self, guild_id, sid):
+        config, _ = self.directory.configuration(guild_id)
+        store = self.directory.store(guild_id)
+        try:
+            controller = Controller(
+                config,
+                store,
+                lambda channel, msg: self.status(guild_id, channel, msg),
+                lambda current: self.close_audio(guild_id, current),
+            )
+            controller.pause_for_voice_state_loss(sid)
+        finally:
+            store.close()
 
     def allow(self, actor: AdminActor):
         if self.policy.allowed_guild_ids and actor.guild_id not in self.policy.allowed_guild_ids:
@@ -98,6 +309,8 @@ class ControlService:
                 options.get("channel"),
                 inherit=options.get("inherit", False),
             )
+        if name == "features":
+            return directory.set_features(actor, options["recording"], options["cloud"])
         raise ValueError("unknown configuration command")
 
     def session(
@@ -123,11 +336,36 @@ class ControlService:
             TypeAdapter(Identifier).validate_python(options["session_id"], strict=True)
         with self.directory.controller(
             actor,
-            lambda channel, message: self.status(actor.guild_id, channel, message),
+            lambda channel, message: self.status(
+                actor.guild_id,
+                channel,
+                "Sprachverbindung wird vorbereitet. Bitte auf die Startmeldung warten."
+                if behavior == "resume" and message.startswith("Aufnahme läuft")
+                else message,
+            ),
             lambda sid: self.close_audio(actor.guild_id, sid),
         ) as controller:
             if behavior in ("start", "resume"):
                 controller.authorize(actor, behavior)
+                if (
+                    self.policy.voice_reception == "disabled"
+                    or actor.guild_id not in self.policy.recording_guild_ids
+                ):
+                    raise ReceiveUnavailable("voice_disabled")
+                if self.pool is None:
+                    raise ReceiveUnavailable("recorder_unavailable")
+                if behavior == "start":
+                    result = self.pool.start(
+                        controller,
+                        actor,
+                        str(options["voice_channel_id"]),
+                        options["participants"],
+                        speaker_aliases=self.directory.voice_aliases(
+                            actor.guild_id, str(options["voice_channel_id"])
+                        ),
+                    )
+                    self.capture_health(force=True)
+                    return result
                 if behavior == "resume":
                     if current_participants is None:
                         raise Denied("fresh voice membership is required to resume")
@@ -141,10 +379,16 @@ class ControlService:
                             actor.guild_id, target.voice_channel_id
                         ),
                     )
-                raise ReceiveUnavailable("DAVE reception awaits review and authorized tests")
+                    result = controller.resume(actor, options["session_id"])
+                    self.origins.setdefault((actor.guild_id, result.id), None)
+                    return result
             if behavior == "process":
                 controller.owned(actor, options["session_id"], "process")
-                raise ReceiveUnavailable("native processing workers are not enabled")
+                if (
+                    self.policy.cloud_processing != "native"
+                    or actor.guild_id not in self.policy.processing_guild_ids
+                ):
+                    raise ReceiveUnavailable("processing_disabled")
             return CommandRouter(controller).dispatch(behavior, actor, **options)
 
     def alias(
@@ -354,13 +598,14 @@ class ControlService:
                 store.close()
         return reminders
 
-    def pause_for_voice_state_loss(self) -> int:
+    def pause_for_voice_state_loss(self, only_guild=None, only_channel=None) -> int:
         guilds = [
             row[0]
             for row in self.directory.db.execute(
                 "SELECT guild_id FROM configurations ORDER BY guild_id"
             )
             if not self.policy.allowed_guild_ids or row[0] in self.policy.allowed_guild_ids
+            if only_guild is None or row[0] == only_guild
         ]
         paused = 0
         for guild_id in guilds:
@@ -377,6 +622,11 @@ class ControlService:
                 )
                 for row in store.db.execute("SELECT id FROM sessions").fetchall():
                     try:
+                        if (
+                            only_channel is not None
+                            and store.session(row[0]).voice_channel_id != only_channel
+                        ):
+                            continue
                         if controller.pause_for_voice_state_loss(row[0]):
                             paused += 1
                     except KeyError:
@@ -386,6 +636,13 @@ class ControlService:
         return paused
 
     def close(self):
+        if self.pool:
+            if self.ingress:
+                for key in list(self.ingress.sessions):
+                    self.ingress.fail(self.ingress.sessions[key], "recorder_shutdown")
+                    self.pool.interrupt(*key, "recorder_shutdown")
+                    self.close_audio(*key)
+            self.pool.interrupt_all()
         self.directory.close()
 
     def publish_once(self, delivery_factory) -> bool:
@@ -636,6 +893,13 @@ class ControlBot:
         self.ready = False
         self.commands_ready = False
         self.command_slots = asyncio.Semaphore(16)
+        self.ingress = self.receiver = None
+        if policy.voice_reception != "disabled":
+            from .discord_receive import DiscordReceiver
+            from .live import AudioIngress
+
+            self.ingress = AudioIngress()
+            self.receiver = DiscordReceiver(self, self.ingress)
         register_commands(self.client, self.invoke)
         self.client.event(self.on_ready)
         self.client.event(self.on_disconnect)
@@ -677,6 +941,8 @@ class ControlBot:
         return str(sent.id)
 
     async def on_ready(self):
+        if self.receiver:
+            await self.receiver.ready()
         if not self.commands_ready:
             try:
                 async with asyncio.timeout(60):
@@ -695,13 +961,20 @@ class ControlBot:
 
     async def on_disconnect(self):
         self.ready = False
+        if self.ingress:
+            for key in list(self.ingress.sessions):
+                self.ingress.pause(*key)
         if self.service is not None:
             with contextlib.suppress(Exception):
                 await self.policy_call(self.service.pause_for_voice_state_loss)
         self.health()
 
     async def on_voice_state_update(self, member, before, after):
-        if self.service is None or member.bot:
+        if self.service is None:
+            return
+        if member.bot:
+            if self.receiver and before.channel is not None and before.channel != after.channel:
+                self.receiver.pause_bot(str(member.id))
             return
         import discord
 
@@ -710,6 +983,11 @@ class ControlBot:
         for channel in changed:
             if not isinstance(channel, discord.VoiceChannel):
                 continue
+            if self.receiver:
+                self.receiver.pause_channel(str(member.guild.id), str(channel.id))
+                await self.policy_call(
+                    self.service.pause_for_voice_state_loss, str(member.guild.id), str(channel.id)
+                )
             participants = {str(person.id) for person in channel.members if not person.bot}
             if getattr(getattr(before, "channel", None), "id", None) == channel.id:
                 participants.discard(str(member.id))
@@ -739,8 +1017,8 @@ class ControlBot:
                     "revision": self.policy.revision,
                     "checked_at": time.time(),
                     "control_ready": self.ready,
-                    "voice_ready": False,
-                    "cloud_ready": False,
+                    "voice_ready": self.ready and self.policy.voice_reception == "qualified",
+                    "cloud_ready": self.ready and self.policy.cloud_processing == "native",
                 }
             ).encode(),
         )
@@ -758,6 +1036,24 @@ class ControlBot:
                 except Exception:
                     logging.getLogger(__name__).error("Protocol poll failed; details suppressed")
             await asyncio.sleep(30)
+
+    async def audio_loop(self):
+        last_renew = time.monotonic()
+        while True:
+            try:
+                active = await self.policy_call(self.service.poll_audio)
+                await self.receiver.reconcile(active)
+                if time.monotonic() - last_renew >= 30:
+                    await self.receiver.renew()
+                    last_renew = time.monotonic()
+            except Exception as error:
+                logging.getLogger(__name__).error(
+                    "Audio operation failed error=%s", type(error).__name__
+                )
+                for live in list(self.ingress.sessions.values()):
+                    self.ingress.fail(live, "audio_runtime_unavailable")
+                await self.policy_call(self.service.pause_for_voice_state_loss)
+            await asyncio.sleep(0.05)
 
     def prepare_options(self, ctx, name, options):
         options = dict(options)
@@ -793,6 +1089,17 @@ class ControlBot:
                 result = await self.policy_call(self.service.configure, name, actor, prepared)
             else:
                 current_participants = None
+                if self.receiver and canonical_command(name) in (
+                    "pause",
+                    "stop",
+                    "revoke",
+                    "alias-delete",
+                ):
+                    for key, live in list(self.ingress.sessions.items()):
+                        if live.session.tenant == actor.guild_id and live.session.id == options.get(
+                            "session_id"
+                        ):
+                            self.ingress.pause(*key)
                 # Session start does not inspect participants or join while gated.
                 if "voice_channel" in options:
                     selected = resolved_channel(ctx.guild, options["voice_channel"], "voice")
@@ -840,6 +1147,20 @@ class ControlBot:
                     options,
                     current_participants=current_participants,
                 )
+                if (
+                    self.receiver
+                    and isinstance(result, Session)
+                    and canonical_command(name) == "resume"
+                ):
+                    key = actor.guild_id, result.id
+                    try:
+                        await self.receiver.connect(result, self.service.origins[key])
+                    except Exception as error:
+                        await self.policy_call(self.service.capture_failed, *key)
+                        logging.getLogger(__name__).error(
+                            "Voice connection failed error=%s", type(error).__name__
+                        )
+                        raise ReceiveUnavailable("voice_connect_failed") from None
             if isinstance(result, bytes):
                 if len(result) > 2_000_000:
                     raise ValueError("result attachment exceeds bound")
@@ -851,7 +1172,9 @@ class ControlBot:
                 return
             if (
                 isinstance(result, dict)
-                and set(result) == {"protokoll-begruendet.md", "protokoll-interpretiert.md"}
+                and bool(result)
+                and set(result)
+                <= {"protokoll-begruendet.md", "protokoll-interpretiert.md", "transkript.json"}
                 and all(isinstance(value, bytes) for value in result.values())
             ):
                 if sum(map(len, result.values())) > 2_000_000:
@@ -866,7 +1189,10 @@ class ControlBot:
                 )
                 return
             if isinstance(result, StrictModel):
+                session_result = result if isinstance(result, Session) else None
                 result = result.model_dump(mode="json")
+            else:
+                session_result = None
             if name == "alias" and isinstance(result, dict):
                 if result.get("consent_applied"):
                     text = (
@@ -886,6 +1212,27 @@ class ControlBot:
                     )
             elif name == "alias-delete":
                 text = "Dein Alias wurde gelöscht; die Aufzeichnungszustimmung wurde widerrufen."
+            elif session_result is not None:
+                sid = session_result.id
+                if session_result.state == SessionState.WAITING:
+                    text = (
+                        f"Sitzung `{sid}` wartet auf Zustimmung. Alle Anwesenden verwenden "
+                        "`/alias` mit Namen und Aufnahmezustimmung. Für Cloud-Protokolle "
+                        f"zusätzlich `/consent session_id:{sid} cloud_consent:true`. "
+                        f"Danach startet die Leitung mit `/resume session_id:{sid}`."
+                    )
+                elif session_result.state == SessionState.RECORDING:
+                    text = f"Aufnahme läuft. Sitzung `{sid}`. `/stop` beendet, `/pause` pausiert."
+                elif session_result.state == SessionState.PAUSED:
+                    text = f"Sitzung `{sid}` ist pausiert. `/resume` prüft die Zustimmung neu."
+                else:
+                    text = (
+                        f"Sitzung `{sid}` ist beendet. Vorhandenes Audio bleibt gespeichert. "
+                        "Verarbeitung und Fehlergründe: `/queue`. "
+                        "Rohtranskript: `/result raw_transcript:true`, Protokolle: `/result`."
+                    )
+            elif canonical_command(name) == "process" and isinstance(result, str):
+                text = f"Auftrag `{result}`. Fortschritt und Fehlergründe: `/queue`."
             else:
                 text = (
                     json.dumps(result, ensure_ascii=False, indent=2) if result is not None else "OK"
@@ -897,10 +1244,14 @@ class ControlBot:
                 "acl",
                 "default_protocol",
                 "protocol",
+                "features",
             ):
                 result = {
                     "configuration": result,
-                    "notice": "Aufnahme und Cloud bleiben bis zur Betriebsfreigabe gesperrt.",
+                    "runtime": {
+                        "voice": self.policy.voice_reception,
+                        "processing": self.policy.cloud_processing,
+                    },
                 }
                 text = json.dumps(result, ensure_ascii=False, indent=2)
             if len(text) <= 1800:
@@ -916,14 +1267,46 @@ class ControlBot:
                     ephemeral=True,
                     allowed_mentions=discord.AllowedMentions.none(),
                 )
-        except ReceiveUnavailable:
+        except ReceiveUnavailable as error:
+            messages = {
+                "processing_disabled": (
+                    "Die Hintergrundverarbeitung ist für diesen Server noch nicht freigegeben."
+                ),
+                "recorder_unavailable": (
+                    "Kein bereiter Aufnahme-Bot verfügbar. Betreiberstatus prüfen."
+                ),
+                "voice_connect_failed": (
+                    "Sprachverbindung fehlgeschlagen. Die Sitzung ist pausiert; "
+                    "/resume versucht es erneut, /stop beendet sie."
+                ),
+            }
             await ctx.respond(
-                "Die Aufnahme ist bis zum geprüften DAVE-Empfang gesperrt. "
-                "Native Hintergrundverarbeitung ist noch nicht freigeschaltet.",
+                messages.get(
+                    str(error), "Die Aufnahme ist bis zum geprüften DAVE-Empfang gesperrt."
+                ),
                 ephemeral=True,
             )
-        except Denied:
-            await ctx.respond("Berechtigung oder freigegebener Kanal fehlt.", ephemeral=True)
+        except Denied as error:
+            messages = {
+                "recording disabled": (
+                    "Aufnahme ist für diesen Server ausgeschaltet. "
+                    "Leitung: /config features prüfen."
+                ),
+                "every participant needs an alias and recording consent": (
+                    "Jede anwesende Person braucht /alias mit Namen und ausdrücklicher "
+                    "Aufnahmezustimmung. Danach kann die Leitung /resume verwenden."
+                ),
+                "owner must participate": (
+                    "Die Sitzungsleitung muss selbst im gewählten Sprachkanal sein."
+                ),
+                "visible recording status was not acknowledged": (
+                    "Die sichtbare Statusmeldung konnte nicht gesendet werden. Kanalrechte prüfen."
+                ),
+            }
+            await ctx.respond(
+                messages.get(str(error), "Berechtigung oder freigegebener Kanal fehlt."),
+                ephemeral=True,
+            )
         except KeyError:
             await ctx.respond("Server mit /setup einrichten; Sitzungs-ID prüfen.", ephemeral=True)
         except Conflict:
@@ -935,14 +1318,21 @@ class ControlBot:
             await ctx.respond(message, ephemeral=True)
         except ValueError:
             await ctx.respond("Ungültige Eingabe oder Ergebnis nicht verfügbar.", ephemeral=True)
-        except Exception:
-            logging.getLogger(__name__).error("Command failed; details suppressed")
+        except Exception as error:
+            reference = uuid.uuid4().hex[:12]
+            logging.getLogger(__name__).error(
+                "Command failed ref=%s error=%s", reference, type(error).__name__
+            )
             await ctx.respond(
-                "Befehl fehlgeschlagen; keine Details veröffentlicht.", ephemeral=True
+                f"Befehl fehlgeschlagen. Referenz: {reference}. "
+                "Betreiberdiagnose enthält den Fehlergrund.",
+                ephemeral=True,
             )
 
     async def run(self):
         self.loop = asyncio.get_running_loop()
+        current_task = asyncio.current_task()
+        self.loop.add_signal_handler(signal.SIGTERM, current_task.cancel)
 
         def initialize():
             def status(guild_id, channel_id, message):
@@ -955,15 +1345,20 @@ class ControlBot:
                     future.cancel()
                     return None
 
-            def close_audio(_guild_id, _sid):
-                return None
+            def close_audio(guild_id, sid):
+                if self.receiver:
+                    self.receiver.halt(guild_id, sid)
 
-            self.service = ControlService(self.policy, status, close_audio)
+            self.service = ControlService(self.policy, status, close_audio, ingress=self.ingress)
+            self.service.recover_recordings()
 
-        heartbeat = None
+        heartbeat = audio = None
         try:
             token = discord_token(self.policy.token_file)
             await self.policy_call(initialize)
+            if self.receiver:
+                await self.receiver.start_helpers()
+                audio = asyncio.create_task(self.audio_loop())
             self.health()
             heartbeat = asyncio.create_task(self.heartbeat())
             await self.client.start(token.get_secret_value())
@@ -975,10 +1370,17 @@ class ControlBot:
                 heartbeat.cancel()
                 with contextlib.suppress(asyncio.CancelledError, OSError):
                     await heartbeat
+            if audio:
+                audio.cancel()
+                with contextlib.suppress(asyncio.CancelledError, Exception):
+                    await audio
+            if self.receiver:
+                await self.receiver.close()
             await self.client.close()
             if self.service:
                 await self.policy_call(self.service.close)
             self.executor.shutdown(wait=True, cancel_futures=True)
+            self.loop.remove_signal_handler(signal.SIGTERM)
 
 
 def run(policy_file: Path):
@@ -992,6 +1394,8 @@ def run(policy_file: Path):
         policy = BotPolicy.model_validate_json(policy_file.read_bytes())
         asyncio.run(ControlBot(policy).run())
     except KeyboardInterrupt:
+        return
+    except asyncio.CancelledError:
         return
     except Exception:
         raise SystemExit(

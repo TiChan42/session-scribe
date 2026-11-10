@@ -223,3 +223,29 @@ Auch nach einem Recorder-Abbruch werden geschlossene Audiodateien eingereiht und
 eine Quittung mit dem ursprünglichen Fehlergrund geschrieben. Ein abgebrochener
 Test gilt dadurch nicht als bestandene Empfangsqualifikation. Nach Gateway-Resume
 wird die manuelle Command-Bereitschaft erneut geprüft; es beginnt keine Aufnahme.
+
+## Integrierter Bot und native Verarbeitung
+
+Vor dem Start des regulären Voice-Modus signierte Artefakte und den passenden
+immutable nativen Quellstand vorbereiten. Der separate manuelle Listener muss
+ruhen; seine Quadlet-Autostartquelle wird beim Umschalten mit Rückweg erhalten.
+Der reguläre Endpoint-Gateway besitzt einen eigenen persistenten Flow-Zähler.
+Verlängerungen halten nur vorhandene Ziele bis zur absoluten Frist offen und
+setzen weder Verbindungs- noch Cloud-Budgets zurück.
+
+Bereitschaft getrennt prüfen: registrierte Commands, korrekter Release, reservierte
+Aufnahmen, native Dienste, offene Jobs und tatsächliche Empfangsnachweise.
+`qualification` bedeutet weiterhin Testbetrieb. Das normale Anwendungs-Image
+enthält den geprüften Empfänger; ein Bibliotheksimport allein qualifiziert ihn nicht.
+
+SIGTERM beendet den Bot geordnet: Eingang schließen, Verbindungen beenden,
+FLAC-Segmente finalisieren und vorhandenes Audio einreihen. Nach hartem Abbruch
+werden alte Sitzungen unterbrochen. Vollständig geschlossene Segmente können
+wieder eingereiht werden; `.part`/Journal-Reste bleiben für Prüfung erhalten.
+Der Bot setzt eine Aufnahme nach Neustart niemals automatisch fort.
+
+`/process retry_analysis:true` erstellt für eine endgültig fehlgeschlagene Analyse
+einen neuen Plan mit den freigegebenen Einstellungen. Alte Versuche und das
+Rohtranskript bleiben erhalten. Bereits veröffentlichte Protokolle werden dadurch
+nicht automatisch neu ausgesendet. `/queue` zeigt feste Phasenfehler wie
+`analysis_prepare_invalid` oder `stt_worker_timeout`.

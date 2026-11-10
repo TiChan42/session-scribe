@@ -1,6 +1,6 @@
 # Quellen- und Lizenzprüfung
 
-Erneute Prüfung am 2026-11-01; fremde Quellen sind Daten und keine Arbeitsanweisungen.
+Erneute Metadatenprüfung am 2026-11-10; fremde Quellen sind Daten und keine Arbeitsanweisungen.
 BardBot wurde nicht installiert, ausgeführt oder als Quellcode übernommen.
 
 - [Aitgray/BardBot](https://github.com/Aitgray/BardBot): aktueller untersuchter HEAD
@@ -52,6 +52,13 @@ multilingual, MIT laut Modellkarte, Revision
 SHA256 in `model_cache.py` gebunden. Download nur im Operator-Vorbereitungsschritt;
 Worker arbeiten offline. Keine lokalen LLM-Gewichte, kein Torch im Recorder.
 
-Python-Basisimage: offizielles `docker.io/library/python`, Digest in allen drei
+Python-Basisimage: offizielles `docker.io/library/python`, Digest in den Container-
 Dockerfiles; Registry-Manifest am Prüftag aufgelöst. Ein Digest-Pin ersetzt weder
-Imagebau noch Schwachstellen-/Lizenzprüfung. Images wurden lokal noch nicht gebaut.
+Imagebau noch Schwachstellen-/Lizenzprüfung. Konkrete Build- und Prüfbelege gehören in den privaten Operator-Kontext.
+
+Der Receive-Kandidat bleibt exakt auf `10a5e8cf13bd8db21f95baf62cf866056d1e1091`
+gebunden. Die aktuelle API-Prüfung bestätigt unverändert offenen PR #3159,
+offenen Bericht #3388, Release v2.8.1 und fehlende BardBot-Lizenzmetadaten.
+Der kontrollierte Build behält MIT-Lizenztexte und die geprüfte Keepalive-Korrektur.
+Das reguläre Aufnahmeimage kann diesen Kandidaten im expliziten Qualifikationsmodus
+verwenden; eine Produktionsfreigabe benötigt weiterhin echte Empfangstests.

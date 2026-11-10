@@ -6,6 +6,7 @@ prove cgroup quiescence. Applications receive only their stage-specific bind mou
 
 from __future__ import annotations
 
+import contextlib
 import json
 import shutil
 import subprocess
@@ -361,8 +362,10 @@ class Broker:
                     self.store.finish(job, error="session_busy")
                     return True
                 try:
+                    stage = "prepare"
                     prepared = self.prepare(job)
                     try:
+                        stage = "worker"
                         self.runner.run(prepared)
                     finally:
                         try:
@@ -371,10 +374,23 @@ class Broker:
                             raise WorkerStillRunning("worker termination is unconfirmed") from None
                         if not stopped:
                             raise WorkerStillRunning("worker termination is unconfirmed")
+                    stage = "validate"
                     self.harvest(prepared)
                     self.promote(job, prepared)
-                except (OSError, ValueError, PermissionError, subprocess.SubprocessError):
+                except (OSError, ValueError, PermissionError, subprocess.SubprocessError) as error:
                     if prepared is not None:
-                        self.harvest(prepared)
-                    self.store.finish(job, error="worker_or_handoff_failed")
+                        with contextlib.suppress(OSError, ValueError, PermissionError):
+                            self.harvest(prepared)
+                    category = (
+                        "denied"
+                        if isinstance(error, PermissionError)
+                        else "invalid"
+                        if isinstance(error, ValueError)
+                        else "timeout"
+                        if isinstance(error, subprocess.TimeoutExpired)
+                        else "io"
+                        if isinstance(error, OSError)
+                        else "failed"
+                    )
+                    self.store.finish(job, error=f"{phase}_{stage}_{category}")
             return True

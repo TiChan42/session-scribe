@@ -72,9 +72,13 @@ class GuildDirectory:
         *,
         limits: Limits | None = None,
         recorder_bot_ids: frozenset[str] = frozenset(),
+        recording_guild_ids: frozenset[str] = frozenset(),
+        cloud_guild_ids: frozenset[str] = frozenset(),
     ):
+        self.recording_guild_ids, self.cloud_guild_ids = recording_guild_ids, cloud_guild_ids
         self.recorder_bot_ids = TypeAdapter(frozenset[Snowflake]).validate_python(recorder_bot_ids)
         self.files, self.inference, self.limits = SafeFiles(root), inference, limits or Limits()
+        self.runtime_limits = limits
         path = self.files.root / "guild-config.sqlite3"
         if path.is_symlink():
             raise ValueError("symlink guild registry")
@@ -106,6 +110,15 @@ class GuildDirectory:
         config = Config.model_validate_json(row[0])
         if config.guild_id != guild_id:
             raise ValueError("cross-guild configuration")
+        if self.recorder_bot_ids:
+            config = config.model_copy(update={"recorder_bot_ids": self.recorder_bot_ids})
+        if self.runtime_limits is not None:
+            caps = self.runtime_limits.model_dump()
+            bounded = {
+                key: (max(value, caps[key]) if key == "min_free_bytes" else min(value, caps[key]))
+                for key, value in config.limits.model_dump().items()
+            }
+            config = config.model_copy(update={"limits": Limits.model_validate(bounded)})
         return config, row[1]
 
     def store(self, guild_id: str) -> Store:
@@ -222,8 +235,12 @@ class GuildDirectory:
             grants=grants,
             inference=self.inference,
             limits=self.limits,
-            recording_enabled=previous.recording_enabled if previous else False,
-            cloud_enabled=previous.cloud_enabled if previous else False,
+            recording_enabled=previous.recording_enabled
+            if previous
+            else actor.guild_id in self.recording_guild_ids,
+            cloud_enabled=previous.cloud_enabled
+            if previous
+            else actor.guild_id in self.cloud_guild_ids,
             daily_cloud_calls=previous.daily_cloud_calls if previous else 4,
             daily_cloud_tokens=previous.daily_cloud_tokens if previous else 100_000,
         )
@@ -286,6 +303,28 @@ class GuildDirectory:
     def show(self, actor: AdminActor) -> Config:
         actor.authorize_setup()
         return self.configuration(actor.guild_id)[0]
+
+    def set_features(self, actor: AdminActor, recording: bool, cloud: bool) -> Config:
+        actor.authorize_setup()
+        if type(recording) is not bool or type(cloud) is not bool:
+            raise ValueError("explicit boolean feature choices required")
+        if (
+            recording
+            and actor.guild_id not in self.recording_guild_ids
+            or cloud
+            and actor.guild_id not in self.cloud_guild_ids
+        ):
+            raise Denied("operator feature authorization required")
+        config, revision = self.configuration(actor.guild_id)
+        updated = config.model_copy(
+            update={
+                "recording_enabled": recording,
+                "cloud_enabled": cloud,
+                "inference": self.inference,
+            }
+        )
+        self._save(actor, updated, revision)
+        return updated
 
     def set_mode(self, actor: AdminActor, mode: Mode) -> Config:
         actor.authorize_setup()
@@ -445,6 +484,25 @@ def definitions() -> list[dict]:
             "default_member_permissions": str(MANAGE_GUILD),
             "options": [
                 {"name": "show", "description": "Konfiguration anzeigen", "type": 1},
+                {
+                    "name": "features",
+                    "description": "Freigegebene Aufnahme und Cloud je Server einschalten",
+                    "type": 1,
+                    "options": [
+                        {
+                            "name": "recording",
+                            "description": "Aufzeichnung zulassen",
+                            "type": 5,
+                            "required": True,
+                        },
+                        {
+                            "name": "cloud",
+                            "description": "Cloud-Auswertung mit Teilnehmerzustimmung zulassen",
+                            "type": 5,
+                            "required": True,
+                        },
+                    ],
+                },
                 {
                     "name": "mode",
                     "description": "Meeting oder DnD wählen",
