@@ -1,0 +1,37 @@
+{
+  "data_root": "/data",
+  "token_file": "/run/secrets/bot.env",
+  "revision": "development",
+  "inference": {
+    "model": "operator-approved-cloud-model",
+    "context_tokens": 16384,
+    "output_tokens": 8192,
+    "prompt_version": "v2",
+    "thinking": "low"
+  },
+  "max_guilds": 32,
+  "allowed_guild_ids": [
+    "1000"
+  ],
+  "voice_reception": "qualification",
+  "cloud_processing": "native",
+  "recording_guild_ids": [
+    "1000"
+  ],
+  "processing_guild_ids": [
+    "1000"
+  ],
+  "cloud_guild_ids": [
+    "1000"
+  ],
+  "recording_bots": [],
+  "voice_gate": "/voice-gate/udp.sock",
+  "limits": {
+    "max_participants": 4,
+    "max_duration_ms": 600000,
+    "segment_ms": 15000,
+    "max_chunks": 10000,
+    "max_audio_bytes": 268435456,
+    "min_free_bytes": 536870912
+  }
+}

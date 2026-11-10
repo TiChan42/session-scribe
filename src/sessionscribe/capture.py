@@ -160,6 +160,21 @@ class RecordingPool:
                 for (guild, sid), c in self._captures.items()
             ]
 
+    def interrupt(self, guild_id: str, sid: str, reason: str):
+        with self._lock:
+            capture = self._captures.get((guild_id, sid))
+            if capture is None:
+                return
+            session = capture.recorder.store.session(sid)
+            capture.recorder.failure = reason
+            capture.recorder.store.save_session(
+                session,
+                session.model_copy(
+                    update={"state": SessionState.INTERRUPTED, "stop_reason": reason}
+                ),
+            )
+            self.close_session(guild_id, sid)
+
     def interrupt_all(self):
         """Local shutdown/disconnect: retain audio, queue closed parts, never auto-resume."""
         with self._lock:

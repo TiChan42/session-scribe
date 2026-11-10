@@ -189,3 +189,21 @@ native Verarbeitung bleiben auch bei manipuliertem Config-Flag gesperrt.
 Parallele Captures, globale Speicher-/Spurreservierungen, automatische Session-
 Queue und Voice-spezifische Protokollziele sind im [Aufnahmevertrag](RECORDING.md)
 beschrieben. Aufnahme und nachgelagerte Bearbeitung sind unabhängige Laufzeitrollen.
+
+## Verbundener Discord-Transport
+
+Der gepinnte SDK-Empfänger prüft DAVE und die authentifizierte SSRC-Zuordnung.
+`AudioIngress` übergibt höchstens 2048 kleine PCM-Frames an den einzigen Policy-
+und Recorder-Executor. SDK-Threads öffnen keine SQLite-Verbindungen. Eine Pause
+sperrt den Eingang synchron und verwirft die alte Queue-Generation.
+Die Schreibarbeit nutzt den bestehenden `RecordingPool` und segmentiert pro Sprecher
+auf derselben monotonen Sitzungszeitachse; Fortsetzen setzt diese Uhr nicht zurück.
+
+Schließen langsamer Discord-Verbindungen läuft getrennt vom Audio-Poll anderer
+Sitzungen. Endpoint-Leases behalten ihr ursprünglich geprüftes Ziel und eine absolute
+Laufzeitgrenze. Pro Verbindung erneuerte IPv4/IPv6-Regeln dürfen andere Verbindungen
+nicht verdrängen. Nur der feste Host-Gateway besitzt dafür CAP_NET_ADMIN.
+Der Recorder behält leere Capabilities, NNP, Seccomp, AppArmor und Read-only-Root.
+
+Der normale Broker verarbeitet Guild-Stores. Der frühere manuelle Test-Store ist
+weiterhin getrennt und wird dadurch nicht automatisch in die normale Queue importiert.

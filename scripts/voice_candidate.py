@@ -1,4 +1,4 @@
-"""Build a pinned MIT Pycord receive candidate for explicit qualification only."""
+"""Build the immutable MIT Pycord receiver; operator policy gates its activation."""
 
 from __future__ import annotations
 

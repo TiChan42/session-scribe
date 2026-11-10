@@ -1,12 +1,17 @@
 # SessionScribe
 
-Für die Inbetriebnahme existiert ein separates Einzeltestimage mit gepinntem
-DAVE-Empfangskandidaten. Sein manueller Listener wartet auf `/testaufnahme` in der
-vom Betreiber freigegebenen Testguild. Deployment und Reconnect starten keine
-Aufnahme. Der Command ist an eine bestimmte Person und feste Kanäle gebunden;
-Netzwerkfreigaben erhalten kurze Ablaufzeiten. Der reguläre Bot
-behält seine Empfangssperre bis zur vollständigen Qualifikation; Details stehen
-in [docs/TESTING.md](docs/TESTING.md).
+Der reguläre Steuerungsbot kann den gepinnten DAVE-Empfänger, den begrenzten
+Aufnahme-Pool und die native STT-/Cloud-Pipeline verbinden. Standardmäßig bleiben
+diese Funktionen ausgeschaltet. Der Betreiber gibt Guilds und Funktionen gezielt
+frei; `/config features` schaltet sie innerhalb dieser Freigabe je Guild ein.
+`qualification` erlaubt begrenzte ausdrückliche Empfangstests. `qualified` setzt
+zusätzlich echte, zum Release passende Empfangsnachweise voraus. Synthetische
+Tests sind kein Nachweis funktionierender Discord-Aufnahme.
+
+Eine Beispieldatei für den begrenzten Testbetrieb steht in
+[config/bot.qualification.example.json](config/bot.qualification.example.json).
+Der frühere separate `/testaufnahme`-Listener bleibt ein eigenständiger Testpfad;
+beide Listener dürfen dieselbe Discord-Identität nicht gleichzeitig für Voice nutzen.
 
 Ein gemeinsamer Steuerungsbot mit Konfiguration je Discord-Server und ein Pool
 zusätzlicher Aufnahme-Bots für parallele Sprachkanäle derselben Guild. Die beiden

@@ -17,8 +17,8 @@ class ControlHealth(StrictModel):
     revision: str = Field(pattern=r"^(development|[a-f0-9]{40,64})$")
     checked_at: float = Field(ge=0, allow_inf_nan=False)
     control_ready: bool
-    voice_ready: Literal[False]
-    cloud_ready: Literal[False]
+    voice_ready: bool
+    cloud_ready: bool
 
 
 def control_ready(root: Path, revision: str, *, now: float | None = None) -> bool:

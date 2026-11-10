@@ -294,3 +294,21 @@ ein erfolgreicher HTTP-Status oder vorhandener Denktext beweist kein Protokoll.
 Die Prompt-Regression prüft die unveränderten v1-Systembytes, die explizite Auswahl
 von v2 und das Beibehalten der strengen Meeting-Validierung. Ein korrigierter Prompt
 lockert weder Quellenbindung noch die Prüfung unzulässiger Kategorien.
+
+## Tests des verbundenen Aufnahmewegs
+
+`tests/test_live_recording.py` prüft die regulären Start-/Alias-/Zustimmungs-/
+Fortsetzen-/Stopp-Operationen mit echten lokalen FLAC-Dateien und Queue-Einträgen.
+Synthetische dekodierte Pakete zweier Sprecher prüfen Trennung und SSRC-Zuordnung.
+Zusätzliche Fälle prüfen alte Queue-Generationen, unbekannte Quellen, Überlastung,
+Handshakes mit geändertem Mitgliederstand und langsames Schließen einer Verbindung.
+Diese Tests benötigen weder Discord-Anmeldung noch echte Stimmen.
+
+Die Steuertests sind zusätzlich mit dem gepinnten Receive-Kandidaten und dessen
+Voice-Abhängigkeiten auszuführen. Ein Import-, Paket- oder Verbindungstest ersetzt
+keine reale Empfangsqualifikation. Für `qualified` verlangt die Infrastruktur
+reale Nachweise für zwei Sprecher, mindestens fünf Minuten stabilen Empfang,
+Pause und erneute Zustimmung sowie Disconnect/Wiederanlauf. Mit konfigurierten
+Hilfsbots ist auch paralleler Kanalempfang zu prüfen. Die privaten Belege müssen
+zum genauen Release und Image passen; synthetische Quittungen werden nicht als
+Produktionsnachweis ausgegeben.

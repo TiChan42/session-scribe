@@ -114,3 +114,27 @@ verlorener Quittung wird ein möglicherweise gesendetes Protokoll nicht automati
 nochmals gepostet. Der Operator muss den Zielkanal abgleichen. Ein vollständiger
 Live-Discord-/DAVE-/Container-Nachweis steht noch aus; lokale Tests verwenden
 synthetische Audio-, LLM- und Versand-Fixtures.
+
+## Regulärer Aufnahmeablauf
+
+1. Leitung: `/setup` mit Command-, Voice- und Protokollkanal; bei bestehender
+   Konfiguration `/config features recording:true cloud:true` im freigegebenen Rahmen.
+2. Leitung betritt den Sprachkanal und verwendet `/startsession`. Der Bot legt eine
+   wartende Sitzung an und zeigt ihre ID; es beginnt noch kein Empfang.
+3. Jede anwesende Person setzt mit `/alias` ihren Namen und ihre Aufnahmezustimmung.
+   Für Cloud-Auswertung bestätigt jede Person zusätzlich `/consent` mit Sitzungs-ID.
+4. Leitung verwendet `/resume` mit Sitzungs-ID. Der Bot prüft aktuelle Mitgliedschaft,
+   verbindet den ausgewählten Aufnahme-Bot und wartet auf DAVE. Erst danach erscheint
+   die tatsächliche Startmeldung und der Audioeingang öffnet sich.
+5. `/pause` schließt Segmente. Mitgliedschaftswechsel und verlorener Gateway-Status
+   pausieren ebenfalls; neue Aufnahme verlangt erneut `/resume`. Jede aktuelle
+   Teilnehmerin und jeder aktuelle Teilnehmer kann mit `/stop` beenden.
+6. Geschlossenes Audio wird dauerhaft für STT eingereiht. Cloud-Auswertung läuft nur
+   mit den nötigen Zustimmungen; zwei validierte Protokolle gehen ins festgelegte Ziel.
+   `/queue` zeigt Phasen und Fehlercodes, `/result` die Protokolle und
+   `/result raw_transcript:true` das separat geprüfte Rohtranskript.
+
+Der Aufnahme-Pool verwendet die Steuerungsidentität und optional eigene, vom Betreiber
+konfigurierte Aufnahmeidentitäten. Pro Identität/Guild ist eine Verbindung möglich.
+Weitere Kanäle brauchen freie passende Identitäten; Tokens sind keine Guild-Einstellung.
+Eine erschöpfte Aufnahme- oder Speicherreserve führt zur Ablehnung vor Aufnahmebeginn.

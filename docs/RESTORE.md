@@ -68,3 +68,16 @@ und konsistent sichern. Befristete Job-Grants und Tokens nach Restore verwerfen;
 erst nach nachgewiesenem Ende alter Worker und neuem gebundenen Auftrag ersetzen.
 Keine fremden Gateway-Budgets übernehmen oder einen verbrauchten Versuch erneut
 freischalten. Dieser Gesamt-Restore ist noch nicht praktisch geprüft.
+
+## Rückweg des integrierten Voice-Transports
+
+Eine Transportänderung erfordert ruhende normale und manuelle Aufnahmen.
+Der scoped Control-Rollout pausiert den gemeinsamen Broker, stoppt den eigenen
+User-Manager und erstellt den bestehenden kalten Datenstand. Frühere Gateway-
+Policy und Unit werden daneben erhalten; die alte manuelle Autostartquelle wird
+retiriert. Bei fehlgeschlagener Bereitschaft werden vorherige Inputs und nur die
+zuvor aktiven Gateways wiederhergestellt. Fehlversuchsdaten bleiben separat erhalten.
+
+Ein automatischer Rückweg ist kein durchgeführter Restore-Drill und keine externe
+Sicherung. Harte Abbrüche mit unfertigen Audiosegmenten verlangen eine Prüfung
+der erhaltenen `.part`- und Journal-Dateien, bevor diese Sitzung erneut verarbeitet wird.
